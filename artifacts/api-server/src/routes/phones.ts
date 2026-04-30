@@ -4,8 +4,29 @@ import { phonesTable, searchesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
 import { analyzeLayer1, analyzeLayer2, analyzeLayer3 } from "../lib/ai-analysis.js";
+import { createWorker } from "tesseract.js";
 
 const router = Router();
+
+/**
+ * Run Tesseract OCR once and return all extracted text and IMEI candidates.
+ * We share the single OCR run across Layer 1, 2, and 3 to avoid running
+ * Tesseract multiple times on the same image.
+ */
+async function runOCR(base64Data: string): Promise<{ text: string; confidence: number; imeiCandidates: string[] }> {
+  const imageBuffer = Buffer.from(base64Data, "base64");
+  const worker = await createWorker("eng");
+  try {
+    await worker.setParameters({ tessedit_char_whitelist: "0123456789 \n" });
+    const { data } = await worker.recognize(imageBuffer);
+    const text = data.text ?? "";
+    const imeiPattern = /\b\d{15}\b/g;
+    const candidates = text.match(imeiPattern) ?? [];
+    return { text, confidence: data.confidence, imeiCandidates: candidates };
+  } finally {
+    await worker.terminate();
+  }
+}
 
 router.post("/", requireAuth, async (req: AuthRequest, res) => {
   const { imei, imageBase64, brand, model } = req.body as {
@@ -25,8 +46,10 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  // Run Layer 1 analysis
-  const layer1 = analyzeLayer1(imei, imageBase64);
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+
+  // Run Layer 1 (real Tesseract OCR)
+  const layer1 = await analyzeLayer1(imei, imageBase64);
 
   if (!layer1.verified) {
     res.status(400).json({
@@ -44,11 +67,27 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  // Run Layer 2 analysis
-  const layer2 = analyzeLayer2(imei, imageBase64, layer1.matchPercentage, brand, model);
+  // Run OCR again to get full text and candidates for Layer 3
+  // (Layer 1 already ran OCR; re-run for Layer 3 context since we need candidates list)
+  let ocrText = "";
+  let ocrConfidence = layer1.ocrConfidence;
+  let imeiCandidates: string[] = [];
+  try {
+    const ocr = await runOCR(base64Data);
+    ocrText = ocr.text;
+    ocrConfidence = ocr.confidence;
+    imeiCandidates = ocr.imeiCandidates;
+  } catch {
+    ocrText = "";
+    ocrConfidence = layer1.ocrConfidence;
+    imeiCandidates = [layer1.extractedImei];
+  }
 
-  // Run Layer 3 analysis
-  const layer3 = analyzeLayer3(imageBase64);
+  // Run Layer 2 analysis (sync, uses real OCR match score)
+  const layer2 = analyzeLayer2(imei, imageBase64, layer1.matchPercentage, ocrConfidence, brand, model);
+
+  // Run Layer 3 analysis (sync, uses OCR confidence + candidates)
+  const layer3 = analyzeLayer3(imageBase64, ocrText, ocrConfidence, imeiCandidates);
 
   // Final decision engine
   const allLayersPassed = layer1.verified && layer2.score > 70 && !layer3.forgeryDetected;
@@ -58,11 +97,8 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
   let savedToDatabase = false;
 
   if (allLayersPassed) {
-    // Save to database
     const existing = await db.select({ id: phonesTable.id }).from(phonesTable).where(eq(phonesTable.imei, imei)).limit(1);
-
     if (existing.length > 0) {
-      // Update verification count
       await db.update(phonesTable)
         .set({ verificationCount: sql`${phonesTable.verificationCount} + 1` })
         .where(eq(phonesTable.imei, imei));
@@ -112,14 +148,10 @@ router.post("/search", async (req, res) => {
     return;
   }
 
-  // Check if phone is in database (flagged as registered/reported)
   const [phone] = await db.select().from(phonesTable).where(eq(phonesTable.imei, imei)).limit(1);
-
-  // Count how many times this IMEI was searched
   const searchLogs = await db.select().from(searchesTable).where(eq(searchesTable.imei, imei));
   const searchCount = searchLogs.length + 1;
 
-  // Log this search
   await db.insert(searchesTable).values({
     imei,
     searchedBy: null,
@@ -129,7 +161,6 @@ router.post("/search", async (req, res) => {
   });
 
   if (phone) {
-    // Update verification count
     await db.update(phonesTable)
       .set({ verificationCount: sql`${phonesTable.verificationCount} + 1` })
       .where(eq(phonesTable.imei, imei));

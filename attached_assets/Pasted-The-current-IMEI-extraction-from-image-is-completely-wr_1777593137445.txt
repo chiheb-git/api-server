@@ -1,0 +1,65 @@
+The current IMEI extraction from image is completely wrong — it extracted '559158244043592' instead of '358392049957572'. Fix this completely by integrating a professional, accurate, and 100% free AI solution.
+SOLUTION — Use Tesseract.js (100% free OCR library):
+Install Tesseract.js on the backend:
+npm install tesseract.js
+Replace the current fake image analysis with real Tesseract.js OCR:
+javascriptconst Tesseract = require('tesseract.js');
+
+async function extractIMEIFromImage(imageBase64) {
+  // Convert base64 to buffer
+  const imageBuffer = Buffer.from(imageBase64, 'base64');
+  
+  // Run OCR with Tesseract
+  const result = await Tesseract.recognize(imageBuffer, 'eng', {
+    tessedit_char_whitelist: '0123456789',
+  });
+  
+  // Extract all 15-digit sequences from OCR text
+  const text = result.data.text;
+  const imeiPattern = /\b\d{15}\b/g;
+  const matches = text.match(imeiPattern);
+  
+  if (matches && matches.length > 0) {
+    return matches[0]; // Return first IMEI found
+  }
+  return null;
+}
+Layer 1 — IMEI/Photo Correlation with Tesseract.js:
+
+Extract IMEI from sticker photo using real OCR
+Compare extracted IMEI with manually typed IMEI
+If match 95-100% → score 100% ✅ → proceed to Layer 2 and Layer 3
+If match below 95% → score 0% ❌ → show error "Photo and IMEI code do not match. Please try again."
+Only save to database if Layer 1 passes
+
+Layer 2 — Trust Score (keep existing logic but fix inputs):
+
+Use real Tesseract OCR match score as the main input
+Calculate trust score 0-100 based on all 5 variables
+Display animated circular gauge
+
+Layer 3 — Forgery Detection (improve with Tesseract data):
+
+Use Tesseract confidence score to detect image quality issues
+If OCR confidence below 60% → flag as possible forgery
+Check if multiple different IMEIs found in same image → flag as suspicious
+Return: "No forgery detected ✅" or "Possible forgery detected ⚠️"
+
+Why Tesseract.js is the right choice:
+
+100% free and open source
+Runs entirely on the server, no external API calls
+Used by thousands of production applications
+Accurate for reading printed numbers on stickers
+No API key, no rate limits, no cost ever
+
+Test after fix:
+
+Upload the Valencia DG800 sticker photo with IMEI 358392049957572
+Tesseract must extract 358392049957572 correctly from the photo
+Layer 1 match must show 100% ✅
+Trust Score must show 85+ 🟢
+Phone must be saved to database successfully
+Search 358392049957572 → show NOT SECURE 🔴
+
+Fix all files completely. Zero errors. Zero placeholders. Production ready.

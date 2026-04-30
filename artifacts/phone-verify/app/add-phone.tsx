@@ -319,11 +319,12 @@ export default function AddPhoneScreen() {
             {result.layer1 && (
               <LayerResult
                 layerNumber={1}
-                title="IMEI / Photo Correlation"
+                title="IMEI / Photo Correlation (OCR)"
                 passed={result.layer1.verified}
                 details={[
                   { label: "Extracted IMEI", value: result.layer1.extractedImei },
-                  { label: "Match", value: `${result.layer1.matchPercentage}%` },
+                  { label: "Match Accuracy", value: `${result.layer1.matchPercentage}%` },
+                  { label: "OCR Confidence", value: `${Math.round((result.layer1 as typeof result.layer1 & { ocrConfidence?: number }).ocrConfidence ?? 0)}%` },
                   { label: "Status", value: result.layer1.message },
                 ]}
               />

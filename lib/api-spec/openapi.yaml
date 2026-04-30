@@ -256,11 +256,14 @@ components:
           type: boolean
         message:
           type: string
+        ocrConfidence:
+          type: number
       required:
         - extractedImei
         - matchPercentage
         - verified
         - message
+        - ocrConfidence
 
     Layer2Result:
       type: object
