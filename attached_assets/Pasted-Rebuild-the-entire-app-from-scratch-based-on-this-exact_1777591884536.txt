@@ -1,0 +1,134 @@
+Rebuild the entire app from scratch based on this exact patentable specification:
+CONCEPT:
+A mobile security system that uses multi-layer AI verification to detect stolen phones. The innovation is the combination of: physical IMEI sticker photo analysis + IMEI code matching + dynamic trust scoring in a single automated pipeline.
+
+PAGE 1 — Login / Register:
+
+Login form: email + password
+Register form: name + email + password
+JWT authentication with bcrypt hashing
+No email verification, no external auth services
+After login/register → navigate to Main Choice page
+
+
+PAGE 2 — Main Choice:
+
+Two buttons:
+
+"Add Phone 📱" → Add Phone page
+"Search Phone 🔍" → Search Phone page
+
+
+
+
+PAGE 3 — Add Phone (Core Innovation):
+Input fields:
+
+IMEI code (15 digits, no Luhn validation)
+Photo of physical IMEI sticker
+Brand (optional)
+Model (optional)
+
+When user clicks "Confirm & Analyze":
+AI LAYER 1 — IMEI/Photo Correlation (patentable):
+Extract the IMEI number from the sticker photo using visual pattern recognition. Compare extracted IMEI with manually typed IMEI. Calculate match percentage 0-100%.
+
+Match 90-100% → IMEI verified ✅
+Match below 90% → IMEI rejected ❌ → show "Photo and IMEI code do not match. Please try again."
+Only if verified → proceed to Layer 2
+
+AI LAYER 2 — Trust Score Calculation (patentable):
+Calculate a dynamic trust score 0-100 based on:
+
+IMEI/Photo match quality × 35 points
+TAC code brand/model coherence × 25 points
+Image quality and authenticity × 20 points
+Registration metadata × 10 points
+Geographic baseline × 10 points
+
+Display animated circular gauge with:
+
+🔴 0-40 = High Risk
+🟡 41-70 = Medium Risk
+🟢 71-100 = Verified Secure
+
+AI LAYER 3 — Physical Forgery Detection (patentable):
+Analyze the sticker photo pixels for:
+
+Font inconsistency detection
+Color anomaly detection
+Edge variance analysis
+Barcode/IMEI alignment check
+Result: "No forgery detected ✅" or "Possible physical forgery ⚠️"
+
+FINAL DECISION ENGINE:
+Combine all 3 layers:
+
+Layer 1 match + Layer 2 score above 70 + Layer 3 no forgery → SAVE to database → show "✅ Phone successfully added and verified"
+Any layer fails → DO NOT SAVE → show specific error explaining which layer failed and why
+
+
+PAGE 4 — Search Phone:
+Input: IMEI code (15 digits)
+When user clicks "Verify":
+Search the database buffer for this IMEI.
+IF IMEI EXISTS in database:
+
+Show "⚠️ PHONE IS NOT SECURE 🔴"
+Show "This device has been reported"
+Display stored Trust Score
+Display all 3 AI analysis results from when it was registered
+Show registration date and verification count
+
+IF IMEI DOES NOT EXIST:
+
+Show "✅ PHONE IS SECURE 🟢"
+Show "This device has not been reported"
+Show how many times this IMEI was searched
+
+
+DATABASE SCHEMA (PostgreSQL):
+users table: id, name, email, password_hash, created_at
+phones table: id, user_id, imei, brand, model, image_base64, trust_score, layer1_score, layer2_score, layer3_result, final_verdict, verification_count, created_at
+searches table: id, imei, searched_by, result, trust_score, ip_address, created_at
+
+UI/UX REQUIREMENTS:
+
+Teal accent color #00BFA5
+Animated circular Trust Score gauge
+Color coded results: red/yellow/green
+Loading spinner on every action
+Clear success and error messages
+Smooth page transitions
+Works perfectly on Expo Go
+
+
+WHAT MAKES THIS PATENTABLE:
+
+The 3-layer AI pipeline that combines visual IMEI extraction + trust scoring + forgery detection in a single automated decision engine
+The automatic cross-reference between physical sticker photo and digital IMEI code
+The dynamic multi-variable trust score specific to mobile device authentication
+The forgery detection using pixel-level analysis of physical IMEI stickers
+
+
+TECHNICAL STACK:
+
+Frontend: React Native + Expo
+Backend: Express.js + Node.js
+Database: PostgreSQL
+Auth: JWT + bcrypt
+All AI algorithms: server-side, no external APIs, 100% free
+No Luhn validation
+No Clerk
+No Firebase
+No paid services
+
+
+END TO END TEST:
+
+Register account → login
+Add Phone → enter IMEI 358392049957572 + upload sticker photo → click Confirm → see 3-layer AI analysis → see Trust Score gauge → see success message
+Search IMEI 358392049957572 → see "NOT SECURE 🔴" + full stored analysis
+Search unknown IMEI 999999999999999 → see "SECURE 🟢"
+
+Generate every file completely. Zero placeholders. Zero errors. Production ready.

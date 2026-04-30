@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface AddPhoneRequest {
+  imei: string;
+  imageBase64: string;
+  brand?: string;
+  model?: string;
 }

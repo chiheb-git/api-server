@@ -3,20 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: PhoneVerify API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: phones
+    description: Phone management
+  - name: searches
+    description: IMEI search
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +29,116 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /phones:
+    post:
+      operationId: addPhone
+      tags: [phones]
+      summary: Add and analyze a phone
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPhoneRequest"
+      responses:
+        "200":
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneAnalysisResult"
+        "400":
+          description: Analysis failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /phones/search:
+    post:
+      operationId: searchPhone
+      tags: [searches]
+      summary: Search for a phone by IMEI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +148,250 @@ components:
       required:
         - status
 
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - name
+        - email
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserInfo"
+      required:
+        - token
+        - user
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+      required:
+        - id
+        - name
+        - email
+
+    AddPhoneRequest:
+      type: object
+      properties:
+        imei:
+          type: string
+        imageBase64:
+          type: string
+        brand:
+          type: string
+        model:
+          type: string
+      required:
+        - imei
+        - imageBase64
+
+    PhoneAnalysisResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        imei:
+          type: string
+        layer1:
+          $ref: "#/components/schemas/Layer1Result"
+        layer2:
+          $ref: "#/components/schemas/Layer2Result"
+        layer3:
+          $ref: "#/components/schemas/Layer3Result"
+        trustScore:
+          type: number
+        finalVerdict:
+          type: string
+        message:
+          type: string
+        savedToDatabase:
+          type: boolean
+      required:
+        - success
+        - imei
+        - layer1
+        - layer2
+        - layer3
+        - trustScore
+        - finalVerdict
+        - message
+        - savedToDatabase
+
+    Layer1Result:
+      type: object
+      properties:
+        extractedImei:
+          type: string
+        matchPercentage:
+          type: number
+        verified:
+          type: boolean
+        message:
+          type: string
+      required:
+        - extractedImei
+        - matchPercentage
+        - verified
+        - message
+
+    Layer2Result:
+      type: object
+      properties:
+        score:
+          type: number
+        riskLevel:
+          type: string
+        breakdown:
+          $ref: "#/components/schemas/TrustScoreBreakdown"
+      required:
+        - score
+        - riskLevel
+        - breakdown
+
+    TrustScoreBreakdown:
+      type: object
+      properties:
+        imeiPhotoMatch:
+          type: number
+        tacCoherence:
+          type: number
+        imageQuality:
+          type: number
+        registrationMetadata:
+          type: number
+        geographicBaseline:
+          type: number
+      required:
+        - imeiPhotoMatch
+        - tacCoherence
+        - imageQuality
+        - registrationMetadata
+        - geographicBaseline
+
+    Layer3Result:
+      type: object
+      properties:
+        forgeryDetected:
+          type: boolean
+        fontInconsistency:
+          type: boolean
+        colorAnomaly:
+          type: boolean
+        edgeVariance:
+          type: boolean
+        barcodeAlignment:
+          type: boolean
+        message:
+          type: string
+      required:
+        - forgeryDetected
+        - fontInconsistency
+        - colorAnomaly
+        - edgeVariance
+        - barcodeAlignment
+        - message
+
+    SearchRequest:
+      type: object
+      properties:
+        imei:
+          type: string
+      required:
+        - imei
+
+    SearchResult:
+      type: object
+      properties:
+        found:
+          type: boolean
+        imei:
+          type: string
+        isSecure:
+          type: boolean
+        message:
+          type: string
+        searchCount:
+          type: integer
+        phone:
+          $ref: "#/components/schemas/StoredPhoneData"
+      required:
+        - found
+        - imei
+        - isSecure
+        - message
+        - searchCount
+
+    StoredPhoneData:
+      type: object
+      properties:
+        id:
+          type: integer
+        imei:
+          type: string
+        brand:
+          type: string
+        model:
+          type: string
+        trustScore:
+          type: number
+        layer1Score:
+          type: number
+        layer2Score:
+          type: number
+        layer3Result:
+          type: string
+        finalVerdict:
+          type: string
+        verificationCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - imei
+        - trustScore
+        - layer1Score
+        - layer2Score
+        - layer3Result
+        - finalVerdict
+        - verificationCount
+        - createdAt
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message

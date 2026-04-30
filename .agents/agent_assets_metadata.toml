@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "smX4vtyEEla6herIVVKD_"
+uri = "file://artifacts/phone-verify/assets/images/icon.png"
+type = "image"
+title = "generated_image"
