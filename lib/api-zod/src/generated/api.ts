@@ -48,6 +48,7 @@ export const AddPhoneBody = zod.object({
   imageBase64: zod.string(),
   brand: zod.string().optional(),
   model: zod.string().optional(),
+  confirmedImei: zod.string().optional(),
 });
 
 export const AddPhoneResponse = zod.object({
@@ -58,30 +59,38 @@ export const AddPhoneResponse = zod.object({
     matchPercentage: zod.number(),
     verified: zod.boolean(),
     message: zod.string(),
+    ocrConfidence: zod.number(),
+    needsManualConfirmation: zod.boolean(),
+    manuallyConfirmed: zod.boolean(),
   }),
-  layer2: zod.object({
-    score: zod.number(),
-    riskLevel: zod.string(),
-    breakdown: zod.object({
-      imeiPhotoMatch: zod.number(),
-      tacCoherence: zod.number(),
-      imageQuality: zod.number(),
-      registrationMetadata: zod.number(),
-      geographicBaseline: zod.number(),
-    }),
-  }),
-  layer3: zod.object({
-    forgeryDetected: zod.boolean(),
-    fontInconsistency: zod.boolean(),
-    colorAnomaly: zod.boolean(),
-    edgeVariance: zod.boolean(),
-    barcodeAlignment: zod.boolean(),
-    message: zod.string(),
-  }),
+  layer2: zod
+    .object({
+      score: zod.number(),
+      riskLevel: zod.string(),
+      breakdown: zod.object({
+        imeiPhotoMatch: zod.number(),
+        tacCoherence: zod.number(),
+        imageQuality: zod.number(),
+        registrationMetadata: zod.number(),
+        geographicBaseline: zod.number(),
+      }),
+    })
+    .optional(),
+  layer3: zod
+    .object({
+      forgeryDetected: zod.boolean(),
+      fontInconsistency: zod.boolean(),
+      colorAnomaly: zod.boolean(),
+      edgeVariance: zod.boolean(),
+      barcodeAlignment: zod.boolean(),
+      message: zod.string(),
+    })
+    .optional(),
   trustScore: zod.number(),
   finalVerdict: zod.string(),
   message: zod.string(),
   savedToDatabase: zod.boolean(),
+  needsManualConfirmation: zod.boolean().optional(),
 });
 
 /**

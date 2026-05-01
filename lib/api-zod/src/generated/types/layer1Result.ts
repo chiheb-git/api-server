@@ -11,4 +11,7 @@ export interface Layer1Result {
   matchPercentage: number;
   verified: boolean;
   message: string;
+  ocrConfidence: number;
+  needsManualConfirmation: boolean;
+  manuallyConfirmed: boolean;
 }

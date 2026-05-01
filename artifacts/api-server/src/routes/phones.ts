@@ -4,36 +4,16 @@ import { phonesTable, searchesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
 import { analyzeLayer1, analyzeLayer2, analyzeLayer3 } from "../lib/ai-analysis.js";
-import { createWorker } from "tesseract.js";
 
 const router = Router();
 
-/**
- * Run Tesseract OCR once and return all extracted text and IMEI candidates.
- * We share the single OCR run across Layer 1, 2, and 3 to avoid running
- * Tesseract multiple times on the same image.
- */
-async function runOCR(base64Data: string): Promise<{ text: string; confidence: number; imeiCandidates: string[] }> {
-  const imageBuffer = Buffer.from(base64Data, "base64");
-  const worker = await createWorker("eng");
-  try {
-    await worker.setParameters({ tessedit_char_whitelist: "0123456789 \n" });
-    const { data } = await worker.recognize(imageBuffer);
-    const text = data.text ?? "";
-    const imeiPattern = /\b\d{15}\b/g;
-    const candidates = text.match(imeiPattern) ?? [];
-    return { text, confidence: data.confidence, imeiCandidates: candidates };
-  } finally {
-    await worker.terminate();
-  }
-}
-
 router.post("/", requireAuth, async (req: AuthRequest, res) => {
-  const { imei, imageBase64, brand, model } = req.body as {
+  const { imei, imageBase64, brand, model, confirmedImei } = req.body as {
     imei?: string;
     imageBase64?: string;
     brand?: string;
     model?: string;
+    confirmedImei?: string;
   };
 
   if (!imei || !imageBase64) {
@@ -46,15 +26,30 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  // Run Layer 1 — real Tesseract OCR, with optional manual confirmation
+  const layer1 = await analyzeLayer1(imei, imageBase64, confirmedImei);
 
-  // Run Layer 1 (real Tesseract OCR)
-  const layer1 = await analyzeLayer1(imei, imageBase64);
-
-  if (!layer1.verified) {
-    res.status(400).json({
-      error: "layer1_failed",
+  // If manual confirmation is still needed, return early so the frontend
+  // can show the confirmation field to the user
+  if (layer1.needsManualConfirmation && !confirmedImei) {
+    res.status(200).json({
+      success: false,
+      imei,
+      layer1,
+      layer2: null,
+      layer3: null,
+      trustScore: 0,
+      finalVerdict: "pending_confirmation",
       message: layer1.message,
+      savedToDatabase: false,
+      needsManualConfirmation: true,
+    });
+    return;
+  }
+
+  // Hard fail if Layer 1 not verified even after confirmation attempt
+  if (!layer1.verified) {
+    res.status(200).json({
       success: false,
       imei,
       layer1,
@@ -62,32 +57,24 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
       layer3: null,
       trustScore: 0,
       finalVerdict: "rejected",
+      message: layer1.message,
       savedToDatabase: false,
+      needsManualConfirmation: layer1.needsManualConfirmation,
     });
     return;
   }
 
-  // Run OCR again to get full text and candidates for Layer 3
-  // (Layer 1 already ran OCR; re-run for Layer 3 context since we need candidates list)
-  let ocrText = "";
-  let ocrConfidence = layer1.ocrConfidence;
-  let imeiCandidates: string[] = [];
-  try {
-    const ocr = await runOCR(base64Data);
-    ocrText = ocr.text;
-    ocrConfidence = ocr.confidence;
-    imeiCandidates = ocr.imeiCandidates;
-  } catch {
-    ocrText = "";
-    ocrConfidence = layer1.ocrConfidence;
-    imeiCandidates = [layer1.extractedImei];
-  }
+  // Run Layer 2 (sync, uses real match score + manual confirmation flag)
+  const layer2 = analyzeLayer2(
+    imei, imageBase64, layer1.matchPercentage,
+    layer1.ocrConfidence, layer1.manuallyConfirmed, brand, model,
+  );
 
-  // Run Layer 2 analysis (sync, uses real OCR match score)
-  const layer2 = analyzeLayer2(imei, imageBase64, layer1.matchPercentage, ocrConfidence, brand, model);
-
-  // Run Layer 3 analysis (sync, uses OCR confidence + candidates)
-  const layer3 = analyzeLayer3(imageBase64, ocrText, ocrConfidence, imeiCandidates);
+  // Run Layer 3 (sync, uses OCR confidence + candidate list)
+  const imeiCandidates = layer1.extractedImei && layer1.extractedImei.length === 15
+    ? [layer1.extractedImei]
+    : [];
+  const layer3 = analyzeLayer3(imageBase64, layer1.ocrConfidence, imeiCandidates);
 
   // Final decision engine
   const allLayersPassed = layer1.verified && layer2.score > 70 && !layer3.forgeryDetected;

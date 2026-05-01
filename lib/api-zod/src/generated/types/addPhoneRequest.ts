@@ -11,4 +11,5 @@ export interface AddPhoneRequest {
   imageBase64: string;
   brand?: string;
   model?: string;
+  confirmedImei?: string;
 }

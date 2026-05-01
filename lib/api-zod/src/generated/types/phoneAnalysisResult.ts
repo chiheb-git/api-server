@@ -13,10 +13,11 @@ export interface PhoneAnalysisResult {
   success: boolean;
   imei: string;
   layer1: Layer1Result;
-  layer2: Layer2Result;
-  layer3: Layer3Result;
+  layer2?: Layer2Result;
+  layer3?: Layer3Result;
   trustScore: number;
   finalVerdict: string;
   message: string;
   savedToDatabase: boolean;
+  needsManualConfirmation?: boolean;
 }

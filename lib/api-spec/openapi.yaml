@@ -209,6 +209,8 @@ components:
           type: string
         model:
           type: string
+        confirmedImei:
+          type: string
       required:
         - imei
         - imageBase64
@@ -234,12 +236,12 @@ components:
           type: string
         savedToDatabase:
           type: boolean
+        needsManualConfirmation:
+          type: boolean
       required:
         - success
         - imei
         - layer1
-        - layer2
-        - layer3
         - trustScore
         - finalVerdict
         - message
@@ -258,12 +260,18 @@ components:
           type: string
         ocrConfidence:
           type: number
+        needsManualConfirmation:
+          type: boolean
+        manuallyConfirmed:
+          type: boolean
       required:
         - extractedImei
         - matchPercentage
         - verified
         - message
         - ocrConfidence
+        - needsManualConfirmation
+        - manuallyConfirmed
 
     Layer2Result:
       type: object

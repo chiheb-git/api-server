@@ -36,6 +36,7 @@ export interface AddPhoneRequest {
   imageBase64: string;
   brand?: string;
   model?: string;
+  confirmedImei?: string;
 }
 
 export interface Layer1Result {
@@ -43,6 +44,9 @@ export interface Layer1Result {
   matchPercentage: number;
   verified: boolean;
   message: string;
+  ocrConfidence: number;
+  needsManualConfirmation: boolean;
+  manuallyConfirmed: boolean;
 }
 
 export interface TrustScoreBreakdown {
@@ -72,12 +76,13 @@ export interface PhoneAnalysisResult {
   success: boolean;
   imei: string;
   layer1: Layer1Result;
-  layer2: Layer2Result;
-  layer3: Layer3Result;
+  layer2?: Layer2Result;
+  layer3?: Layer3Result;
   trustScore: number;
   finalVerdict: string;
   message: string;
   savedToDatabase: boolean;
+  needsManualConfirmation?: boolean;
 }
 
 export interface SearchRequest {

@@ -26,13 +26,17 @@ import { LayerResult } from "@/components/LayerResult";
 interface AnalysisResult {
   success: boolean;
   imei: string;
+  needsManualConfirmation?: boolean;
   layer1: {
     extractedImei: string;
     matchPercentage: number;
     verified: boolean;
     message: string;
+    ocrConfidence?: number;
+    needsManualConfirmation?: boolean;
+    manuallyConfirmed?: boolean;
   };
-  layer2: {
+  layer2?: {
     score: number;
     riskLevel: string;
     breakdown: {
@@ -42,15 +46,15 @@ interface AnalysisResult {
       registrationMetadata: number;
       geographicBaseline: number;
     };
-  };
-  layer3: {
+  } | null;
+  layer3?: {
     forgeryDetected: boolean;
     fontInconsistency: boolean;
     colorAnomaly: boolean;
     edgeVariance: boolean;
     barcodeAlignment: boolean;
     message: string;
-  };
+  } | null;
   trustScore: number;
   finalVerdict: string;
   message: string;
@@ -72,6 +76,8 @@ export default function AddPhoneScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState("");
+  const [confirmedImei, setConfirmedImei] = useState("");
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   const convertAndSetBase64 = async (uri: string) => {
     if (Platform.OS === "web") {
@@ -141,40 +147,38 @@ export default function AddPhoneScreen() {
     }
   };
 
-  const handleAnalyze = async () => {
+  const submitAnalysis = async (withConfirmation?: string) => {
     setError("");
-    setResult(null);
-
-    if (!imei || !/^\d{15}$/.test(imei)) {
-      setError("IMEI must be exactly 15 digits");
-      return;
-    }
-    if (!imageBase64) {
-      setError("Please select or take a photo of the IMEI sticker");
-      return;
-    }
-
     setLoading(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     try {
+      const body: Record<string, string> = { imei, imageBase64: imageBase64! };
+      if (brand) body["brand"] = brand;
+      if (model) body["model"] = model;
+      if (withConfirmation) body["confirmedImei"] = withConfirmation;
+
       const res = await fetch(`${BASE_URL}/api/phones`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ imei, imageBase64, brand: brand || undefined, model: model || undefined }),
+        body: JSON.stringify(body),
       });
 
-      const data = await res.json() as AnalysisResult & { message?: string };
+      const data = await res.json() as AnalysisResult;
 
-      if (res.status === 400 && !data.layer1?.verified) {
-        setResult(data as AnalysisResult);
+      // Backend says OCR is low confidence and needs manual confirmation
+      if (data.needsManualConfirmation && !withConfirmation) {
+        setNeedsConfirmation(true);
+        setResult(data);
         return;
       }
 
-      setResult(data as AnalysisResult);
+      setNeedsConfirmation(false);
+      setResult(data);
+
       if (data.success) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -187,6 +191,34 @@ export default function AddPhoneScreen() {
     }
   };
 
+  const handleAnalyze = async () => {
+    setError("");
+    setResult(null);
+    setNeedsConfirmation(false);
+    setConfirmedImei("");
+
+    if (!imei || !/^\d{15}$/.test(imei)) {
+      setError("IMEI must be exactly 15 digits");
+      return;
+    }
+    if (!imageBase64) {
+      setError("Please select or take a photo of the IMEI sticker");
+      return;
+    }
+
+    await submitAnalysis();
+  };
+
+  const handleConfirm = async () => {
+    setError("");
+    const confirmDigits = confirmedImei.replace(/\D/g, "");
+    if (confirmDigits.length !== 15) {
+      setError("Confirmed IMEI must be exactly 15 digits");
+      return;
+    }
+    await submitAnalysis(confirmDigits);
+  };
+
   const handleReset = () => {
     setResult(null);
     setImei("");
@@ -195,6 +227,8 @@ export default function AddPhoneScreen() {
     setImageUri(null);
     setImageBase64(null);
     setError("");
+    setConfirmedImei("");
+    setNeedsConfirmation(false);
   };
 
   return (
@@ -209,7 +243,7 @@ export default function AddPhoneScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 30 }]}>
-        {!result ? (
+        {(!result || needsConfirmation) ? (
           <>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Device Information</Text>
 
@@ -276,6 +310,38 @@ export default function AddPhoneScreen() {
               </View>
             )}
 
+            {/* Manual confirmation card — shown when OCR confidence is too low */}
+            {needsConfirmation && result && (
+              <View style={[styles.confirmCard, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+                <View style={styles.confirmHeader}>
+                  <Feather name="eye" size={18} color="#d97706" />
+                  <Text style={[styles.confirmTitle, { color: "#d97706" }]}>
+                    Manual Confirmation Required
+                  </Text>
+                </View>
+                <Text style={[styles.confirmDesc, { color: colors.mutedForeground }]}>
+                  OCR confidence was too low ({Math.round(result.layer1.ocrConfidence ?? 0)}%) to read the IMEI automatically.
+                  Please type the 15-digit IMEI exactly as you see it printed on the sticker photo.
+                </Text>
+                {result.layer1.extractedImei && result.layer1.extractedImei !== "Unable to extract" && (
+                  <Text style={[styles.ocrHint, { color: colors.mutedForeground }]}>
+                    OCR read: <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>{result.layer1.extractedImei}</Text>
+                  </Text>
+                )}
+                <StyledInput
+                  label="Confirm IMEI from photo"
+                  placeholder="Type the 15-digit IMEI you see"
+                  value={confirmedImei}
+                  onChangeText={(t) => setConfirmedImei(t.replace(/\D/g, "").slice(0, 15))}
+                  keyboardType="numeric"
+                  maxLength={15}
+                />
+                <Text style={[styles.charCount, { color: colors.mutedForeground }]}>
+                  {confirmedImei.length}/15 digits
+                </Text>
+              </View>
+            )}
+
             {error ? (
               <View style={[styles.errorBanner, { backgroundColor: "#fef2f2", borderColor: "#fecaca" }]}>
                 <Feather name="alert-circle" size={14} color={colors.error} />
@@ -283,18 +349,27 @@ export default function AddPhoneScreen() {
               </View>
             ) : null}
 
-            <PrimaryButton
-              title="Confirm & Analyze"
-              onPress={handleAnalyze}
-              loading={loading}
-              style={{ marginTop: 20 }}
-            />
+            {needsConfirmation ? (
+              <PrimaryButton
+                title="Verify with Manual IMEI"
+                onPress={handleConfirm}
+                loading={loading}
+                style={{ marginTop: 12 }}
+              />
+            ) : (
+              <PrimaryButton
+                title="Confirm & Analyze"
+                onPress={handleAnalyze}
+                loading={loading}
+                style={{ marginTop: 20 }}
+              />
+            )}
 
             {loading && (
               <View style={styles.loadingInfo}>
                 <ActivityIndicator color={colors.primary} size="small" />
                 <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-                  Running 3-layer AI analysis...
+                  {needsConfirmation ? "Verifying manual confirmation..." : "Running 3-layer AI analysis..."}
                 </Text>
               </View>
             )}
@@ -339,7 +414,7 @@ export default function AddPhoneScreen() {
                 details={[
                   { label: "Extracted IMEI", value: result.layer1.extractedImei },
                   { label: "Match Accuracy", value: `${result.layer1.matchPercentage}%` },
-                  { label: "OCR Confidence", value: `${Math.round((result.layer1 as typeof result.layer1 & { ocrConfidence?: number }).ocrConfidence ?? 0)}%` },
+                  { label: "OCR Confidence", value: `${Math.round(result.layer1.ocrConfidence ?? 0)}%` },
                   { label: "Status", value: result.layer1.message },
                 ]}
               />
@@ -486,6 +561,39 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  confirmCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 4,
+    gap: 10,
+  },
+  confirmHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  confirmTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+  },
+  confirmDesc: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
+  },
+  ocrHint: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  charCount: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textAlign: "right",
+    marginTop: -6,
   },
   verdictBanner: {
     flexDirection: "row",

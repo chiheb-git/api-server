@@ -1,6 +1,7 @@
 /**
  * Multi-layer AI phone verification engine.
- * Layer 1 uses real Tesseract.js OCR — all algorithms run server-side with no external APIs.
+ * Layer 1 uses real Tesseract.js OCR with IMEI-specific patterns,
+ * plus manual confirmation fallback when OCR confidence is low.
  */
 
 import { createWorker } from "tesseract.js";
@@ -11,6 +12,8 @@ export interface Layer1Result {
   verified: boolean;
   message: string;
   ocrConfidence: number;
+  needsManualConfirmation: boolean;
+  manuallyConfirmed: boolean;
 }
 
 export interface TrustScoreBreakdown {
@@ -37,10 +40,88 @@ export interface Layer3Result {
 }
 
 /**
- * LAYER 1 — IMEI/Photo Correlation using real Tesseract.js OCR
- * Extracts IMEI number from the sticker photo, compares with typed IMEI.
+ * IMEI-specific regex patterns tried in order of specificity.
+ * Most specific first: IMEI label + digits, then bare 15-digit run.
  */
-export async function analyzeLayer1(imei: string, imageBase64: string): Promise<Layer1Result> {
+const IMEI_PATTERNS = [
+  /IMEI\s*[12]?\s*:?\s*(\d{15})/gi,
+  /IMEI\s*(\d{15})/gi,
+  /\b(\d{15})\b/g,
+];
+
+function findBestImeiCandidate(text: string, typedImei: string): string {
+  const allCandidates: string[] = [];
+
+  for (const pattern of IMEI_PATTERNS) {
+    // Reset lastIndex for global patterns
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      // Named capture group or first capture group
+      const candidate = match[1] ?? match[0];
+      const digits = candidate.replace(/\D/g, "");
+      if (digits.length === 15) {
+        allCandidates.push(digits);
+      }
+      // Prevent infinite loop on zero-width matches
+      if (match[0].length === 0) { pattern.lastIndex++; }
+    }
+  }
+
+  if (allCandidates.length === 0) return "";
+
+  // Pick the candidate with most digits matching the typed IMEI
+  let bestCandidate = allCandidates[0]!;
+  let bestScore = 0;
+  for (const candidate of allCandidates) {
+    let score = 0;
+    for (let i = 0; i < 15; i++) {
+      if (candidate[i] === typedImei[i]) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
+    }
+  }
+  return bestCandidate;
+}
+
+function digitMatchPercent(a: string, b: string): number {
+  if (a.length !== 15 || b.length !== 15) return 0;
+  let matches = 0;
+  for (let i = 0; i < 15; i++) {
+    if (a[i] === b[i]) matches++;
+  }
+  return Math.round((matches / 15) * 100);
+}
+
+function checkImageFormat(buf: Buffer): boolean {
+  return (
+    buf.length > 100 &&
+    (
+      (buf[0] === 0xFF && buf[1] === 0xD8) ||              // JPEG
+      (buf[0] === 0x89 && buf[1] === 0x50) ||              // PNG
+      (buf[0] === 0x47 && buf[1] === 0x49) ||              // GIF
+      (buf[0] === 0x52 && buf[1] === 0x49 && buf[8] === 0x57) || // WebP
+      (buf[0] === 0x42 && buf[1] === 0x4D) ||              // BMP
+      (buf[0] === 0x49 && buf[1] === 0x49) ||              // TIFF LE
+      (buf[0] === 0x4D && buf[1] === 0x4D)                 // TIFF BE
+    )
+  );
+}
+
+/**
+ * LAYER 1 — IMEI/Photo Correlation
+ *
+ * Tries Tesseract OCR with IMEI-specific parameters.
+ * If OCR confidence < 70%, sets needsManualConfirmation = true.
+ * If confirmedImei is provided and matches typedImei → passes at 100%.
+ */
+export async function analyzeLayer1(
+  imei: string,
+  imageBase64: string,
+  confirmedImei?: string,
+): Promise<Layer1Result> {
   const digits = imei.replace(/\D/g, "");
   if (digits.length !== 15) {
     return {
@@ -49,154 +130,159 @@ export async function analyzeLayer1(imei: string, imageBase64: string): Promise<
       verified: false,
       message: "IMEI must be exactly 15 digits",
       ocrConfidence: 0,
+      needsManualConfirmation: false,
+      manuallyConfirmed: false,
     };
   }
 
-  // Strip data URI prefix if present
+  // If user provided a manual confirmation IMEI, compare directly
+  if (confirmedImei) {
+    const confirmDigits = confirmedImei.replace(/\D/g, "");
+    if (confirmDigits.length === 15 && confirmDigits === digits) {
+      return {
+        extractedImei: confirmDigits,
+        matchPercentage: 100,
+        verified: true,
+        message: "IMEI verified ✅ (manually confirmed — 100% match)",
+        ocrConfidence: 0,
+        needsManualConfirmation: false,
+        manuallyConfirmed: true,
+      };
+    } else if (confirmDigits.length === 15) {
+      const pct = digitMatchPercent(confirmDigits, digits);
+      return {
+        extractedImei: confirmDigits,
+        matchPercentage: pct,
+        verified: false,
+        message: `Confirmed IMEI does not match typed IMEI. Match: ${pct}%. Please check both fields.`,
+        ocrConfidence: 0,
+        needsManualConfirmation: true,
+        manuallyConfirmed: false,
+      };
+    }
+  }
+
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const imageBuffer = Buffer.from(base64Data, "base64");
 
-  let extractedImei = "";
-  let ocrConfidence = 0;
-
-  // Verify we have a valid image buffer before invoking Tesseract
-  const isValidImage = (
-    imageBuffer.length > 100 &&
-    (
-      // JPEG: FF D8 FF
-      (imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8) ||
-      // PNG: 89 50 4E 47
-      (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) ||
-      // GIF: 47 49 46
-      (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) ||
-      // WebP: RIFF....WEBP
-      (imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49 && imageBuffer[8] === 0x57) ||
-      // BMP: 42 4D
-      (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4D) ||
-      // TIFF: 49 49 or 4D 4D
-      (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) ||
-      (imageBuffer[0] === 0x4D && imageBuffer[1] === 0x4D)
-    )
-  );
-
-  if (!isValidImage) {
+  if (!checkImageFormat(imageBuffer)) {
     return {
       extractedImei: "Unable to read image",
       matchPercentage: 0,
       verified: false,
+      message: "Image format not supported. Please upload a clear JPEG or PNG of the IMEI sticker.",
       ocrConfidence: 0,
-      message: "Image format not supported or file is corrupted. Please upload a JPEG or PNG photo of the IMEI sticker.",
+      needsManualConfirmation: true,
+      manuallyConfirmed: false,
     };
   }
 
+  let extractedImei = "";
+  let ocrConfidence = 0;
+
   const worker = await createWorker("eng");
   try {
-    // Restrict to digits only for maximum accuracy on IMEI stickers
+    // PSM 6 = assume a uniform block of text (best for sticker labels)
     await worker.setParameters({
-      tessedit_char_whitelist: "0123456789 \n",
+      tessedit_char_whitelist: "0123456789: IMEimei",
+      // @ts-expect-error — tessedit_pageseg_mode is a valid Tesseract param
+      tessedit_pageseg_mode: "6",
+      // @ts-expect-error
+      preserve_interword_spaces: "1",
     });
 
     const { data } = await worker.recognize(imageBuffer);
     ocrConfidence = data.confidence;
-
     const text = data.text ?? "";
 
-    // Extract all 15-digit sequences from the OCR output
-    const imeiPattern = /\b\d{15}\b/g;
-    const matches = text.match(imeiPattern);
+    extractedImei = findBestImeiCandidate(text, digits);
 
-    if (matches && matches.length > 0) {
-      // Pick the match that is closest to the typed IMEI
-      let bestMatch = matches[0]!;
-      let bestSimilarity = 0;
-
-      for (const candidate of matches) {
-        let same = 0;
-        for (let i = 0; i < 15; i++) {
-          if (candidate[i] === digits[i]) same++;
-        }
-        const similarity = same / 15;
-        if (similarity > bestSimilarity) {
-          bestSimilarity = similarity;
-          bestMatch = candidate;
-        }
-      }
-
-      extractedImei = bestMatch;
-    } else {
-      // No full 15-digit sequence found — try extracting the longest digit run
+    // If no 15-digit match found, try stripping all non-digits and sliding window
+    if (!extractedImei) {
       const allDigits = text.replace(/\D/g, "");
       if (allDigits.length >= 15) {
-        // Find the substring that best matches the typed IMEI
         let bestScore = 0;
-        let bestSlice = allDigits.slice(0, 15);
         for (let start = 0; start <= allDigits.length - 15; start++) {
           const slice = allDigits.slice(start, start + 15);
-          let matches = 0;
+          let score = 0;
           for (let i = 0; i < 15; i++) {
-            if (slice[i] === digits[i]) matches++;
+            if (slice[i] === digits[i]) score++;
           }
-          if (matches > bestScore) {
-            bestScore = matches;
-            bestSlice = slice;
+          if (score > bestScore) {
+            bestScore = score;
+            extractedImei = slice;
           }
         }
-        extractedImei = bestSlice;
       }
     }
-  } catch (err) {
-    // Tesseract failed to parse the image — return a graceful error
+  } catch {
     await worker.terminate().catch(() => {});
     return {
       extractedImei: "OCR failed",
       matchPercentage: 0,
       verified: false,
+      message: "Could not process image. Please upload a clearer photo or use manual confirmation below.",
       ocrConfidence: 0,
-      message: "Could not process image. Please ensure you upload a clear JPEG or PNG photo of the IMEI sticker.",
+      needsManualConfirmation: true,
+      manuallyConfirmed: false,
     };
   } finally {
     await worker.terminate().catch(() => {});
   }
 
-  // Calculate match percentage character by character
-  let matchCount = 0;
-  for (let i = 0; i < 15; i++) {
-    if (extractedImei[i] === digits[i]) matchCount++;
-  }
   const matchPercentage = extractedImei.length === 15
-    ? Math.round((matchCount / 15) * 100)
+    ? digitMatchPercent(extractedImei, digits)
     : 0;
 
-  const verified = matchPercentage >= 95;
+  const OCR_CONFIDENCE_THRESHOLD = 70;
+  const isLowConfidence = ocrConfidence < OCR_CONFIDENCE_THRESHOLD;
 
+  // Low OCR confidence → request manual confirmation before deciding
+  if (isLowConfidence) {
+    return {
+      extractedImei: extractedImei || "Unable to extract",
+      matchPercentage,
+      verified: false,
+      message: `OCR confidence too low (${Math.round(ocrConfidence)}%). Please type the IMEI you see in the photo to confirm.`,
+      ocrConfidence,
+      needsManualConfirmation: true,
+      manuallyConfirmed: false,
+    };
+  }
+
+  const verified = matchPercentage >= 95;
   return {
     extractedImei: extractedImei || "Unable to extract",
     matchPercentage,
     verified,
     ocrConfidence,
     message: verified
-      ? `IMEI verified ✅ (${matchPercentage}% match)`
+      ? `IMEI verified ✅ (${matchPercentage}% match, OCR confidence ${Math.round(ocrConfidence)}%)`
       : `Photo and IMEI code do not match. Match: ${matchPercentage}%. Please try again.`,
+    needsManualConfirmation: !verified,
+    manuallyConfirmed: false,
   };
 }
 
 /**
  * LAYER 2 — Dynamic Trust Score Calculation
- * Multi-variable scoring based on IMEI analysis, TAC coherence, image quality,
- * registration metadata, and geographic baseline.
  */
 export function analyzeLayer2(
   imei: string,
   imageBase64: string,
   layer1MatchPct: number,
   ocrConfidence: number,
+  manuallyConfirmed: boolean,
   brand?: string,
   model?: string,
 ): Layer2Result {
   const imageBytes = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), "base64");
 
-  // Component 1: IMEI/Photo match quality × 35 points (driven by real OCR match)
-  const imeiPhotoMatch = Math.round((layer1MatchPct / 100) * 35);
+  // Component 1: IMEI/Photo match quality × 35 points
+  // Manual confirmation = full score when 100% match
+  const imeiPhotoMatch = manuallyConfirmed
+    ? 35
+    : Math.round((layer1MatchPct / 100) * 35);
 
   // Component 2: TAC code brand/model coherence × 25 points
   const tac = imei.substring(0, 8);
@@ -206,7 +292,6 @@ export function analyzeLayer2(
   if (model && model.length > 0) tacCoherence = Math.min(25, tacCoherence + 3);
 
   // Component 3: Image quality and authenticity × 20 points
-  // Use real OCR confidence as the primary quality signal
   const imageSize = imageBytes.length;
   let sizeScore = 0;
   if (imageSize > 100000) sizeScore = 10;
@@ -215,7 +300,10 @@ export function analyzeLayer2(
   else if (imageSize > 5000) sizeScore = 4;
   else sizeScore = 2;
 
-  const confidenceScore = Math.round((ocrConfidence / 100) * 10);
+  // Manual confirmation still gets reasonable quality score based on image size
+  const confidenceScore = manuallyConfirmed
+    ? 8
+    : Math.round((ocrConfidence / 100) * 10);
   const imageQuality = Math.min(20, sizeScore + confidenceScore);
 
   // Component 4: Registration metadata × 10 points
@@ -247,18 +335,16 @@ export function analyzeLayer2(
 
 /**
  * LAYER 3 — Physical Forgery Detection
- * Uses Tesseract OCR confidence + pixel analysis to detect tampered stickers.
  */
 export function analyzeLayer3(
   imageBase64: string,
-  ocrText: string,
   ocrConfidence: number,
   extractedImeis: string[],
 ): Layer3Result {
   const imageBytes = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), "base64");
   const imageSize = imageBytes.length;
 
-  // Font inconsistency detection via byte frequency variance
+  // Font inconsistency via byte frequency variance
   const byteFrequency: Record<number, number> = {};
   for (let i = 0; i < Math.min(imageSize, 2000); i++) {
     const b = imageBytes[i]!;
@@ -269,7 +355,7 @@ export function analyzeLayer3(
   const minFreq = Math.min(...freqValues);
   const fontInconsistency = maxFreq - minFreq > 180;
 
-  // Color anomaly detection via channel distribution analysis
+  // Color anomaly via channel distribution
   let redSum = 0, greenSum = 0, blueSum = 0;
   const sampleSize = Math.min(imageSize - 3, 3000);
   for (let i = 0; i < sampleSize; i += 3) {
@@ -284,7 +370,7 @@ export function analyzeLayer3(
     Math.abs(redSum / samples - blueSum / samples);
   const colorAnomaly = channelVariance > 80;
 
-  // Edge variance analysis — detects unnatural sharpness from digital editing
+  // Edge variance — unnatural sharpness from digital editing
   let edgeSum = 0;
   for (let i = 1; i < Math.min(imageSize, 1000); i++) {
     edgeSum += Math.abs((imageBytes[i]! ?? 0) - (imageBytes[i - 1]! ?? 0));
@@ -292,12 +378,11 @@ export function analyzeLayer3(
   const avgEdge = edgeSum / Math.min(imageSize - 1, 999);
   const edgeVariance = avgEdge > 60;
 
-  // Barcode/IMEI alignment check using OCR confidence
-  // Low OCR confidence (< 60%) suggests the image is manipulated or very poor quality
-  const barcodeAlignment = ocrConfidence < 60;
+  // Low OCR confidence → suspicious image
+  const barcodeAlignment = ocrConfidence > 0 && ocrConfidence < 60;
 
-  // Suspicious: multiple different IMEIs found in the same image
-  const uniqueImeis = new Set(extractedImeis).size;
+  // Multiple different IMEIs in the same photo is suspicious
+  const uniqueImeis = new Set(extractedImeis.filter(Boolean)).size;
   const multipleImeisFound = uniqueImeis > 1;
 
   const forgeryFlags = [fontInconsistency, colorAnomaly, edgeVariance, barcodeAlignment, multipleImeisFound].filter(Boolean).length;
