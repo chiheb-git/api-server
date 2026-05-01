@@ -1,6 +1,16 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
+// Prevent uncaught exceptions from worker threads (e.g. Tesseract OCR bad image)
+// from killing the server process. Log the error and keep running.
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception — keeping server alive");
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "Unhandled rejection — keeping server alive");
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {

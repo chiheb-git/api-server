@@ -59,6 +59,36 @@ export async function analyzeLayer1(imei: string, imageBase64: string): Promise<
   let extractedImei = "";
   let ocrConfidence = 0;
 
+  // Verify we have a valid image buffer before invoking Tesseract
+  const isValidImage = (
+    imageBuffer.length > 100 &&
+    (
+      // JPEG: FF D8 FF
+      (imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8) ||
+      // PNG: 89 50 4E 47
+      (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) ||
+      // GIF: 47 49 46
+      (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) ||
+      // WebP: RIFF....WEBP
+      (imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49 && imageBuffer[8] === 0x57) ||
+      // BMP: 42 4D
+      (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4D) ||
+      // TIFF: 49 49 or 4D 4D
+      (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) ||
+      (imageBuffer[0] === 0x4D && imageBuffer[1] === 0x4D)
+    )
+  );
+
+  if (!isValidImage) {
+    return {
+      extractedImei: "Unable to read image",
+      matchPercentage: 0,
+      verified: false,
+      ocrConfidence: 0,
+      message: "Image format not supported or file is corrupted. Please upload a JPEG or PNG photo of the IMEI sticker.",
+    };
+  }
+
   const worker = await createWorker("eng");
   try {
     // Restrict to digits only for maximum accuracy on IMEI stickers
@@ -114,8 +144,18 @@ export async function analyzeLayer1(imei: string, imageBase64: string): Promise<
         extractedImei = bestSlice;
       }
     }
+  } catch (err) {
+    // Tesseract failed to parse the image — return a graceful error
+    await worker.terminate().catch(() => {});
+    return {
+      extractedImei: "OCR failed",
+      matchPercentage: 0,
+      verified: false,
+      ocrConfidence: 0,
+      message: "Could not process image. Please ensure you upload a clear JPEG or PNG photo of the IMEI sticker.",
+    };
   } finally {
-    await worker.terminate();
+    await worker.terminate().catch(() => {});
   }
 
   // Calculate match percentage character by character

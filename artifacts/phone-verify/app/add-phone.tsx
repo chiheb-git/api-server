@@ -73,6 +73,37 @@ export default function AddPhoneScreen() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState("");
 
+  const convertAndSetBase64 = async (uri: string) => {
+    if (Platform.OS === "web") {
+      // On web, the URI is a blob: or data: URL — fetch and convert to base64
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        await new Promise<void>((resolve, reject) => {
+          reader.onloadend = () => {
+            if (typeof reader.result === "string") {
+              setImageBase64(reader.result);
+              resolve();
+            } else {
+              reject(new Error("FileReader returned unexpected type"));
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        setError("Could not read image. Please try a different photo.");
+      }
+    } else {
+      // On native, read directly from filesystem as base64
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setImageBase64(`data:image/jpeg;base64,${b64}`);
+    }
+  };
+
   const pickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -88,16 +119,7 @@ export default function AddPhoneScreen() {
 
     if (!picked.canceled && picked.assets[0]) {
       setImageUri(picked.assets[0].uri);
-      // Read as base64
-      if (Platform.OS !== "web") {
-        const b64 = await FileSystem.readAsStringAsync(picked.assets[0].uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        setImageBase64(`data:image/jpeg;base64,${b64}`);
-      } else {
-        // Web fallback
-        setImageBase64(picked.assets[0].uri);
-      }
+      await convertAndSetBase64(picked.assets[0].uri);
     }
   };
 
@@ -115,14 +137,7 @@ export default function AddPhoneScreen() {
 
     if (!photo.canceled && photo.assets[0]) {
       setImageUri(photo.assets[0].uri);
-      if (Platform.OS !== "web") {
-        const b64 = await FileSystem.readAsStringAsync(photo.assets[0].uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        setImageBase64(`data:image/jpeg;base64,${b64}`);
-      } else {
-        setImageBase64(photo.assets[0].uri);
-      }
+      await convertAndSetBase64(photo.assets[0].uri);
     }
   };
 
