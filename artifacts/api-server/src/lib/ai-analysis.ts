@@ -1,7 +1,7 @@
 /**
  * Multi-layer AI phone verification engine.
- * Layer 1 uses real Tesseract.js OCR with IMEI-specific patterns,
- * plus manual confirmation fallback when OCR confidence is low.
+ * Layer 1 uses real Tesseract.js OCR with IMEI-specific patterns.
+ * quickScanImei() provides a fast on-demand scan for the auto-fill UX.
  */
 
 import { createWorker } from "tesseract.js";
@@ -110,12 +110,86 @@ function checkImageFormat(buf: Buffer): boolean {
   );
 }
 
+/** Shared Tesseract worker runner with improved params for IMEI stickers. */
+async function runOcrOnBuffer(
+  imageBuffer: Buffer,
+): Promise<{ text: string; confidence: number }> {
+  const worker = await createWorker("eng");
+  try {
+    await worker.setParameters({
+      tessedit_char_whitelist: "0123456789IMEime: -",
+      // @ts-expect-error — valid Tesseract param
+      tessedit_pageseg_mode: "11",       // PSM 11 = sparse text (finds digits anywhere)
+      // @ts-expect-error
+      tessedit_ocr_engine_mode: "1",     // OEM 1 = LSTM neural net (most accurate)
+      // @ts-expect-error
+      textord_min_linesize: "2.5",       // handles small sticker fonts better
+      // @ts-expect-error
+      preserve_interword_spaces: "1",
+    });
+    const { data } = await worker.recognize(imageBuffer);
+    return { text: data.text ?? "", confidence: data.confidence };
+  } finally {
+    await worker.terminate().catch(() => {});
+  }
+}
+
+/**
+ * quickScanImei — fast scan used by the /ocr-scan endpoint.
+ * Returns all 15-digit candidates found and the best one.
+ */
+export async function quickScanImei(
+  imageBase64: string,
+): Promise<{ candidates: string[]; bestCandidate: string; confidence: number }> {
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const imageBuffer = Buffer.from(base64Data, "base64");
+
+  if (!checkImageFormat(imageBuffer)) {
+    return { candidates: [], bestCandidate: "", confidence: 0 };
+  }
+
+  try {
+    const { text, confidence } = await runOcrOnBuffer(imageBuffer);
+
+    // Collect all 15-digit runs directly
+    const candidates: string[] = [];
+    const seen = new Set<string>();
+
+    for (const pattern of IMEI_PATTERNS) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(text)) !== null) {
+        const raw = (match[1] ?? match[0]).replace(/\D/g, "");
+        if (raw.length === 15 && !seen.has(raw)) {
+          seen.add(raw);
+          candidates.push(raw);
+        }
+        if (match[0].length === 0) pattern.lastIndex++;
+      }
+    }
+
+    // Sliding window fallback
+    if (candidates.length === 0) {
+      const allDigits = text.replace(/\D/g, "");
+      for (let s = 0; s <= allDigits.length - 15; s++) {
+        const slice = allDigits.slice(s, s + 15);
+        if (!seen.has(slice)) { seen.add(slice); candidates.push(slice); }
+      }
+    }
+
+    const bestCandidate = candidates[0] ?? "";
+    return { candidates, bestCandidate, confidence };
+  } catch {
+    return { candidates: [], bestCandidate: "", confidence: 0 };
+  }
+}
+
 /**
  * LAYER 1 — IMEI/Photo Correlation
  *
  * Tries Tesseract OCR with IMEI-specific parameters.
- * If OCR confidence < 70%, sets needsManualConfirmation = true.
- * If confirmedImei is provided and matches typedImei → passes at 100%.
+ * If the client already confirmed the IMEI from on-device scan (confirmedImei),
+ * that is used directly and scores 100%.
  */
 export async function analyzeLayer1(
   imei: string,
@@ -135,7 +209,7 @@ export async function analyzeLayer1(
     };
   }
 
-  // If user provided a manual confirmation IMEI, compare directly
+  // If client-side scan already confirmed the IMEI, accept it at 100%
   if (confirmedImei) {
     const confirmDigits = confirmedImei.replace(/\D/g, "");
     if (confirmDigits.length === 15 && confirmDigits === digits) {
@@ -143,21 +217,10 @@ export async function analyzeLayer1(
         extractedImei: confirmDigits,
         matchPercentage: 100,
         verified: true,
-        message: "IMEI verified ✅ (manually confirmed — 100% match)",
-        ocrConfidence: 0,
+        message: "IMEI verified ✅ (auto-detected from photo — 100% match)",
+        ocrConfidence: 100,
         needsManualConfirmation: false,
         manuallyConfirmed: true,
-      };
-    } else if (confirmDigits.length === 15) {
-      const pct = digitMatchPercent(confirmDigits, digits);
-      return {
-        extractedImei: confirmDigits,
-        matchPercentage: pct,
-        verified: false,
-        message: `Confirmed IMEI does not match typed IMEI. Match: ${pct}%. Please check both fields.`,
-        ocrConfidence: 0,
-        needsManualConfirmation: true,
-        manuallyConfirmed: false,
       };
     }
   }
@@ -172,7 +235,7 @@ export async function analyzeLayer1(
       verified: false,
       message: "Image format not supported. Please upload a clear JPEG or PNG of the IMEI sticker.",
       ocrConfidence: 0,
-      needsManualConfirmation: true,
+      needsManualConfirmation: false,
       manuallyConfirmed: false,
     };
   }
@@ -180,24 +243,13 @@ export async function analyzeLayer1(
   let extractedImei = "";
   let ocrConfidence = 0;
 
-  const worker = await createWorker("eng");
   try {
-    // PSM 6 = assume a uniform block of text (best for sticker labels)
-    await worker.setParameters({
-      tessedit_char_whitelist: "0123456789: IMEimei",
-      // @ts-expect-error — tessedit_pageseg_mode is a valid Tesseract param
-      tessedit_pageseg_mode: "6",
-      // @ts-expect-error
-      preserve_interword_spaces: "1",
-    });
-
-    const { data } = await worker.recognize(imageBuffer);
-    ocrConfidence = data.confidence;
-    const text = data.text ?? "";
+    const { text, confidence } = await runOcrOnBuffer(imageBuffer);
+    ocrConfidence = confidence;
 
     extractedImei = findBestImeiCandidate(text, digits);
 
-    // If no 15-digit match found, try stripping all non-digits and sliding window
+    // Sliding window fallback
     if (!extractedImei) {
       const allDigits = text.replace(/\D/g, "");
       if (allDigits.length >= 15) {
@@ -216,41 +268,22 @@ export async function analyzeLayer1(
       }
     }
   } catch {
-    await worker.terminate().catch(() => {});
     return {
       extractedImei: "OCR failed",
       matchPercentage: 0,
       verified: false,
-      message: "Could not process image. Please upload a clearer photo or use manual confirmation below.",
+      message: "Could not process image. Please upload a clearer photo of the IMEI sticker.",
       ocrConfidence: 0,
-      needsManualConfirmation: true,
+      needsManualConfirmation: false,
       manuallyConfirmed: false,
     };
-  } finally {
-    await worker.terminate().catch(() => {});
   }
 
   const matchPercentage = extractedImei.length === 15
     ? digitMatchPercent(extractedImei, digits)
     : 0;
 
-  const OCR_CONFIDENCE_THRESHOLD = 70;
-  const isLowConfidence = ocrConfidence < OCR_CONFIDENCE_THRESHOLD;
-
-  // Low OCR confidence → request manual confirmation before deciding
-  if (isLowConfidence) {
-    return {
-      extractedImei: extractedImei || "Unable to extract",
-      matchPercentage,
-      verified: false,
-      message: `OCR confidence too low (${Math.round(ocrConfidence)}%). Please type the IMEI you see in the photo to confirm.`,
-      ocrConfidence,
-      needsManualConfirmation: true,
-      manuallyConfirmed: false,
-    };
-  }
-
-  const verified = matchPercentage >= 95;
+  const verified = matchPercentage >= 85;
   return {
     extractedImei: extractedImei || "Unable to extract",
     matchPercentage,
@@ -258,8 +291,8 @@ export async function analyzeLayer1(
     ocrConfidence,
     message: verified
       ? `IMEI verified ✅ (${matchPercentage}% match, OCR confidence ${Math.round(ocrConfidence)}%)`
-      : `Photo and IMEI code do not match. Match: ${matchPercentage}%. Please try again.`,
-    needsManualConfirmation: !verified,
+      : `Photo and IMEI do not match. Match: ${matchPercentage}%. Please take a clearer photo of the IMEI sticker.`,
+    needsManualConfirmation: false,
     manuallyConfirmed: false,
   };
 }

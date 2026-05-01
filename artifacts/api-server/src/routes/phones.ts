@@ -3,9 +3,26 @@ import { db } from "@workspace/db";
 import { phonesTable, searchesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
-import { analyzeLayer1, analyzeLayer2, analyzeLayer3 } from "../lib/ai-analysis.js";
+import { analyzeLayer1, analyzeLayer2, analyzeLayer3, quickScanImei } from "../lib/ai-analysis.js";
 
 const router = Router();
+
+/**
+ * POST /api/phones/ocr-scan
+ * Lightweight endpoint: just runs OCR and returns detected IMEI candidates.
+ * Used by the frontend to auto-fill the IMEI field immediately after photo pick.
+ */
+router.post("/ocr-scan", requireAuth, async (req: AuthRequest, res) => {
+  const { imageBase64 } = req.body as { imageBase64?: string };
+
+  if (!imageBase64) {
+    res.status(400).json({ error: "validation_error", message: "imageBase64 is required" });
+    return;
+  }
+
+  const result = await quickScanImei(imageBase64);
+  res.json(result);
+});
 
 router.post("/", requireAuth, async (req: AuthRequest, res) => {
   const { imei, imageBase64, brand, model, confirmedImei } = req.body as {

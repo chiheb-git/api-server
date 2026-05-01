@@ -1,0 +1,59 @@
+"The current Tesseract.js OCR is too weak — only 9% confidence. Replace it completely with a much more intelligent and professional solution using Google ML Kit Text Recognition which runs directly on the mobile device for free. No manual input required.
+Install on frontend (Expo):
+npx expo install expo-camera
+npx expo install @react-native-ml-kit/text-recognition
+Replace the manual confirmation field with this smart scanning flow:
+
+When user uploads or takes a photo, immediately run ML Kit Text Recognition on the image ON THE DEVICE (not server)
+Extract all 15-digit sequences from the recognized text using this pattern:
+
+javascriptimport TextRecognition from '@react-native-ml-kit/text-recognition';
+
+async function extractIMEIFromImage(imageUri) {
+  const result = await TextRecognition.recognize(imageUri);
+  const fullText = result.blocks.map(b => b.text).join(' ');
+  
+  // Find all 15-digit numbers
+  const imeiPattern = /\b\d{15}\b/g;
+  const matches = fullText.match(imeiPattern);
+  
+  // Also try patterns with spaces or dashes
+  const flexPattern = /\b\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
+  const flexMatches = fullText.match(flexPattern);
+  
+  return matches || flexMatches || [];
+}
+
+Auto-fill the IMEI field automatically after scanning — NO manual input needed
+Show green checkmark when IMEI is auto-detected from photo
+Show the extracted text confidence score
+If ML Kit finds the IMEI → compare with typed IMEI → Layer 1 passes automatically
+If ML Kit cannot find any 15-digit number → show message 'Please take a clearer photo of the IMEI sticker'
+
+On the backend, also improve Tesseract with better preprocessing:
+javascriptconst worker = await createWorker('eng');
+await worker.setParameters({
+  tessedit_char_whitelist: '0123456789IMEime: ',
+  tessedit_pageseg_mode: '11',
+  tessedit_ocr_engine_mode: '2',
+  textord_min_linesize: '2.5',
+});
+Complete intelligent flow:
+
+Step 1: User uploads photo
+Step 2: ML Kit scans on device instantly (no network needed)
+Step 3: IMEI auto-extracted and filled in the field automatically
+Step 4: Green checkmark shows 'IMEI detected from photo ✅'
+Step 5: User clicks Confirm & Analyze
+Step 6: Backend verifies with improved Tesseract as double-check
+Step 7: Both results compared → Trust Score calculated
+
+This solution is:
+
+100% free (Google ML Kit is completely free)
+Works offline on device
+Much more accurate than Tesseract for mobile photos
+No manual input required from user
+Professional production-grade OCR
+
+Remove the Manual Confirmation Required field completely. Never ask user to type IMEI manually. Always auto-detect from photo."
