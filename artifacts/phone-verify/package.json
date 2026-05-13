@@ -34,7 +34,6 @@
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.10",
     "expo-location": "~19.0.8",
-    "expo-router": "~6.0.17",
     "expo-splash-screen": "~31.0.12",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
@@ -56,6 +55,9 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "expo-file-system": "^19.0.22"
+    "expo-camera": "~17.0.10",
+    "expo-file-system": "^19.0.22",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-router": "~6.0.23"
   }
 }

@@ -1,0 +1,275 @@
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
+import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
+
+export default function HomeScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/auth");
+  };
+
+  const handleAddPhone = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/add-phone");
+  };
+
+  const handleSearchPhone = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/search-phone");
+  };
+
+  const handleVerifyBox = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/box-verify");
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 40 : 16) }]}>
+        <View>
+          <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Welcome back,</Text>
+          <Text style={[styles.userName, { color: colors.foreground }]}>{user?.name ?? "User"}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={handleLogout}
+          style={[styles.logoutBtn, { backgroundColor: colors.muted }]}
+        >
+          <Feather name="log-out" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Hero card */}
+      <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
+        <Feather name="shield" size={48} color="rgba(255,255,255,0.9)" />
+        <Text style={styles.heroTitle}>PhoneVerify</Text>
+        <Text style={styles.heroSub}>Multi-layer AI phone security system</Text>
+        <View style={styles.heroDots}>
+          {["IMEI Analysis", "Trust Score", "Forgery Detection"].map((label) => (
+            <View key={label} style={styles.heroDot}>
+              <View style={styles.dotCircle} />
+              <Text style={styles.dotLabel}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Action cards */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={handleAddPhone}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: "#e8f5f2" }]}>
+            <Feather name="smartphone" size={28} color={colors.primary} />
+          </View>
+          <Text style={[styles.actionTitle, { color: colors.foreground }]}>Add Phone</Text>
+          <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+            Register & verify{"\n"}a new device
+          </Text>
+          <View style={[styles.actionArrow, { backgroundColor: colors.primary }]}>
+            <Feather name="arrow-right" size={16} color="#fff" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={handleSearchPhone}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: "#fff3e0" }]}>
+            <Feather name="search" size={28} color="#f59e0b" />
+          </View>
+          <Text style={[styles.actionTitle, { color: colors.foreground }]}>Search Phone</Text>
+          <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+            Check if an IMEI{"\n"}is reported
+          </Text>
+          <View style={[styles.actionArrow, { backgroundColor: "#f59e0b" }]}>
+            <Feather name="arrow-right" size={16} color="#fff" />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.actionsRowSingle}>
+        <TouchableOpacity
+          style={[styles.actionCardWide, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={handleVerifyBox}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: "#e8f0ff" }]}>
+            <Feather name="box" size={28} color="#2563eb" />
+          </View>
+          <Text style={[styles.actionTitle, { color: colors.foreground }]}>Verify Box 📦</Text>
+          <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+            Run 8-layer AI box{"\n"}authenticity analysis
+          </Text>
+          <View style={[styles.actionArrow, { backgroundColor: "#2563eb" }]}>
+            <Feather name="arrow-right" size={16} color="#fff" />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Info footer */}
+      <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Feather name="info" size={16} color={colors.primary} />
+        <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+          Use Add Phone to register a device. Use Search to check if an IMEI has been reported as stolen.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingBottom: 20,
+  },
+  greeting: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  userName: {
+    fontSize: 22,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+  },
+  logoutBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroCard: {
+    borderRadius: 24,
+    padding: 28,
+    alignItems: "center",
+    marginBottom: 20,
+    shadowColor: "#00BFA5",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  heroTitle: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    marginTop: 10,
+  },
+  heroSub: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  heroDots: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  heroDot: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  dotCircle: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  dotLabel: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 16,
+  },
+  actionsRowSingle: {
+    marginBottom: 16,
+  },
+  actionCard: {
+    flex: 1,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionCardWide: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  actionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    marginBottom: 4,
+  },
+  actionSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  actionArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  infoCard: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "flex-start",
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
+});

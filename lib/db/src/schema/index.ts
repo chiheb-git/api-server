@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, real, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, real, timestamp, bigserial, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -47,3 +47,42 @@ export const searchesTable = pgTable("searches", {
 export const insertSearchSchema = createInsertSchema(searchesTable).omit({ id: true, createdAt: true });
 export type InsertSearch = z.infer<typeof insertSearchSchema>;
 export type Search = typeof searchesTable.$inferSelect;
+
+export const boxVerificationsTable = pgTable("box_verifications", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id),
+  frontImageBase64: text("front_image_base64"),
+  angleImageBase64: text("angle_image_base64"),
+  layer1Score: integer("layer1_score").notNull(),
+  layer2Score: integer("layer2_score").notNull(),
+  layer3Score: integer("layer3_score").notNull(),
+  layer4Score: integer("layer4_score").notNull(),
+  layer5Score: integer("layer5_score").notNull(),
+  layer6Score: integer("layer6_score").notNull(),
+  layer7Score: integer("layer7_score").notNull(),
+  layer8Score: integer("layer8_score").notNull(),
+  finalScore: integer("final_score").notNull(),
+  /** TEXT : libellés longs / emojis sans risque de troncature (ex-AUTHENTIC vs chaînes fusion). */
+  verdict: text("verdict").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBoxVerificationSchema = createInsertSchema(boxVerificationsTable).omit({ id: true, createdAt: true });
+export type InsertBoxVerification = z.infer<typeof insertBoxVerificationSchema>;
+export type BoxVerification = typeof boxVerificationsTable.$inferSelect;
+
+export const fusionVerificationsTable = pgTable("fusion_verifications", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id),
+  imeiScore: integer("imei_score").notNull(),
+  boxScore: integer("box_score").notNull(),
+  fusionScore: integer("fusion_score").notNull(),
+  verdict: text("verdict").notNull(),
+  confidence: varchar("confidence", { length: 20 }).notNull(),
+  agreement: varchar("agreement", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFusionVerificationSchema = createInsertSchema(fusionVerificationsTable).omit({ id: true, createdAt: true });
+export type InsertFusionVerification = z.infer<typeof insertFusionVerificationSchema>;
+export type FusionVerification = typeof fusionVerificationsTable.$inferSelect;

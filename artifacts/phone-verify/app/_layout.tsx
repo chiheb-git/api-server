@@ -28,6 +28,8 @@ function RootLayoutNav() {
       <Stack.Screen name="home" />
       <Stack.Screen name="add-phone" />
       <Stack.Screen name="search-phone" />
+      <Stack.Screen name="box-verify" />
+      <Stack.Screen name="fusion-result" />
     </Stack>
   );
 }

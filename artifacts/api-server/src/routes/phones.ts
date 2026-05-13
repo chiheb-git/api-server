@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { phonesTable, searchesTable } from "@workspace/db";
+import { boxVerificationsTable, fusionVerificationsTable, phonesTable, searchesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
 import { analyzeLayer1, analyzeLayer2, analyzeLayer3, quickScanImei } from "../lib/ai-analysis.js";
+import { analyzeBox, neutralBoxAuthResult } from "../services/boxAI.js";
+import { fusionAI } from "../services/fusionAI.js";
+import { validateBase64ImageSizes } from "../lib/imagePayloadLimits.js";
 
 const router = Router();
 
@@ -20,26 +23,45 @@ router.post("/ocr-scan", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  const imgOk = validateBase64ImageSizes([{ name: "image OCR", value: imageBase64 }]);
+  if (!imgOk.ok) {
+    res.status(400).json({ error: "payload_too_large", message: imgOk.message });
+    return;
+  }
+
   const result = await quickScanImei(imageBase64);
   res.json(result);
 });
 
 router.post("/", requireAuth, async (req: AuthRequest, res) => {
-  const { imei, imageBase64, brand, model, confirmedImei } = req.body as {
+  try {
+  const { imei, imageBase64, brand, model, confirmedImei, boxFrontImage, boxAngleImage } = req.body as {
     imei?: string;
     imageBase64?: string;
     brand?: string;
     model?: string;
     confirmedImei?: string;
+    boxFrontImage?: string;
+    boxAngleImage?: string;
   };
 
-  if (!imei || !imageBase64) {
-    res.status(400).json({ error: "validation_error", message: "IMEI and image are required" });
+  if (!imei || !imageBase64 || !boxFrontImage || !boxAngleImage) {
+    res.status(400).json({ error: "validation_error", message: "IMEI image, boxFrontImage and boxAngleImage are required" });
     return;
   }
 
   if (!/^\d{15}$/.test(imei)) {
     res.status(400).json({ error: "validation_error", message: "IMEI must be exactly 15 digits" });
+    return;
+  }
+
+  const sizes = validateBase64ImageSizes([
+    { name: "photo IMEI", value: imageBase64 },
+    { name: "boîte (face)", value: boxFrontImage },
+    { name: "boîte (angle)", value: boxAngleImage },
+  ]);
+  if (!sizes.ok) {
+    res.status(400).json({ error: "payload_too_large", message: sizes.message });
     return;
   }
 
@@ -66,17 +88,24 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
 
   // Hard fail if Layer 1 not verified even after confirmation attempt
   if (!layer1.verified) {
+    const imeiScore = Math.round(layer1.matchPercentage || 0);
+    const boxScore = 0;
+    const fusion = fusionAI(imeiScore, boxScore, { layer1, layer2: { score: imeiScore } }, null, imei);
+    const fusionAnalysis = {
+      ...fusion.fusionAnalysis,
+      raison: layer1.message || fusion.fusionAnalysis.raison,
+    };
+
     res.status(200).json({
-      success: false,
-      imei,
-      layer1,
-      layer2: null,
-      layer3: null,
-      trustScore: 0,
-      finalVerdict: "rejected",
+      stored: false,
       message: layer1.message,
-      savedToDatabase: false,
-      needsManualConfirmation: layer1.needsManualConfirmation,
+      imeiAnalysis: {
+        layer1,
+        layer2: null,
+        layer3: null,
+      },
+      boxAnalysis: null,
+      fusionAnalysis,
     });
     return;
   }
@@ -93,21 +122,56 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
     : [];
   const layer3 = analyzeLayer3(imageBase64, layer1.ocrConfidence, imeiCandidates);
 
-  // Final decision engine
+  // Step 2 — AI 2 Box verification (sharp uniquement, rapide)
+  let boxResult;
+  try {
+    boxResult = await analyzeBox(boxFrontImage, boxAngleImage);
+  } catch (boxErr) {
+    console.error("BOX-AI error:", boxErr);
+    boxResult = neutralBoxAuthResult();
+  }
+  const boxScore = boxResult.finalScore;
+
+  // Step 3 — AI 3 Fusion (COMPARE-AI)
+  const imeiScore = Math.round(layer2.score);
+  const fusion = fusionAI(
+    imeiScore,
+    boxScore,
+    { layer1, layer2, layer3 },
+    boxResult,
+    imei,
+  );
+  const fusionAnalysis = fusion.fusionAnalysis;
+
+  // Step 4 — Decision (stockage IMEI seulement si score_global >= 50)
+  if (fusion.fusionScore < 50) {
+    res.status(422).json({
+      stored: false,
+      message: "Device not stored: AI verification score too low.",
+      imeiAnalysis: {
+        layer1,
+        layer2,
+        layer3,
+      },
+      boxAnalysis: boxResult,
+      fusionAnalysis: fusionAnalysis,
+    });
+    return;
+  }
+
   const allLayersPassed = layer1.verified && layer2.score > 70 && !layer3.forgeryDetected;
   const finalVerdict = allLayersPassed ? "verified" : "rejected";
 
-  let message: string;
-  let savedToDatabase = false;
-
-  if (allLayersPassed) {
+  let storedPhoneId: number | null = null;
+  try {
     const existing = await db.select({ id: phonesTable.id }).from(phonesTable).where(eq(phonesTable.imei, imei)).limit(1);
     if (existing.length > 0) {
       await db.update(phonesTable)
         .set({ verificationCount: sql`${phonesTable.verificationCount} + 1` })
         .where(eq(phonesTable.imei, imei));
+      storedPhoneId = existing[0]!.id;
     } else {
-      await db.insert(phonesTable).values({
+      const inserted = await db.insert(phonesTable).values({
         userId: req.userId!,
         imei,
         brand: brand ?? null,
@@ -119,29 +183,75 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
         layer3Result: layer3.message,
         finalVerdict,
         verificationCount: 1,
-      });
+      }).returning({ id: phonesTable.id });
+      storedPhoneId = inserted[0]?.id ?? null;
     }
-    savedToDatabase = true;
-    message = "Phone successfully added and verified";
-  } else {
-    const failedLayers: string[] = [];
-    if (!layer1.verified) failedLayers.push(`Layer 1: ${layer1.message}`);
-    if (layer2.score <= 70) failedLayers.push(`Layer 2: Trust score too low (${layer2.score}/100)`);
-    if (layer3.forgeryDetected) failedLayers.push(`Layer 3: ${layer3.message}`);
-    message = `Verification failed. ${failedLayers.join(". ")}`;
+
+    await db.insert(boxVerificationsTable).values({
+      userId: req.userId ?? null,
+      layer1Score: boxResult.layers.layer1.score,
+      layer2Score: boxResult.layers.layer2.score,
+      layer3Score: boxResult.layers.layer3.score,
+      layer4Score: boxResult.layers.layer4.score,
+      layer5Score: boxResult.layers.layer5.score,
+      layer6Score: boxResult.layers.layer6.score,
+      layer7Score: boxResult.layers.layer7.score,
+      layer8Score: boxResult.layers.layer8.score,
+      finalScore: boxResult.finalScore,
+      verdict: boxResult.verdict,
+    });
+
+    await db.insert(fusionVerificationsTable).values({
+      userId: req.userId ?? null,
+      imeiScore: fusion.imeiAIScore,
+      boxScore: fusion.boxAIScore,
+      fusionScore: fusion.fusionScore,
+      verdict: fusion.verdict,
+      confidence: fusion.confidence,
+      agreement: fusion.agreement,
+    });
+  } catch (dbError) {
+    console.error('DB insert error:', dbError);
+    // Continuer et retourner le résultat même si la DB plante
   }
 
-  res.json({
-    success: allLayersPassed,
-    imei,
-    layer1,
-    layer2,
-    layer3,
-    trustScore: layer2.score,
-    finalVerdict,
-    message,
-    savedToDatabase,
+  res.status(200).json({
+    stored: true,
+    message: "Device stored: AI verification score is above 50%.",
+    phone: {
+      id: storedPhoneId,
+      imei,
+      brand: brand ?? null,
+      model: model ?? null,
+      trustScore: layer2.score,
+      finalVerdict,
+    },
+    imeiAnalysis: {
+      layer1,
+      layer2,
+      layer3,
+    },
+    boxAnalysis: boxResult,
+    fusionAnalysis,
   });
+  } catch (e) {
+    console.error("POST /api/phones error:", e);
+    const fallbackBody = req.body as { imei?: string };
+    const imeiSafe = fallbackBody?.imei ?? "";
+    const fusion = fusionAI(0, 0, { layer2: { score: 0 } }, null, imeiSafe);
+    res.status(200).json({
+      stored: false,
+      message:
+        "Une erreur est survenue pendant la vérification. Les résultats ci-dessous sont indicatifs ; merci de réessayer.",
+      imeiAnalysis: null,
+      boxAnalysis: null,
+      fusionAnalysis: {
+        ...fusion.fusionAnalysis,
+        raison:
+          "Le traitement n’a pas pu aller au bout. Aucune donnée n’a été enregistrée. Réessayez avec des photos plus petites ou une meilleure connexion.",
+      },
+    });
+  }
 });
 
 router.post("/search", async (req, res) => {

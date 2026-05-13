@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 
-const API_DOMAIN = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
-setBaseUrl(`https://${API_DOMAIN}`);
+const API_DOMAIN = process.env["EXPO_PUBLIC_DOMAIN"] ?? "192.168.1.4:3000";
+setBaseUrl(`http://${API_DOMAIN}`);
 
 interface User {
   id: number;

@@ -4,7 +4,7 @@
  * quickScanImei() provides a fast on-demand scan for the auto-fill UX.
  */
 
-import { createWorker } from "tesseract.js";
+import { createWorker, PSM, OEM } from "tesseract.js";
 
 export interface Layer1Result {
   extractedImei: string;
@@ -118,14 +118,6 @@ async function runOcrOnBuffer(
   try {
     await worker.setParameters({
       tessedit_char_whitelist: "0123456789IMEime: -",
-      // @ts-expect-error — valid Tesseract param
-      tessedit_pageseg_mode: "11",       // PSM 11 = sparse text (finds digits anywhere)
-      // @ts-expect-error
-      tessedit_ocr_engine_mode: "1",     // OEM 1 = LSTM neural net (most accurate)
-      // @ts-expect-error
-      textord_min_linesize: "2.5",       // handles small sticker fonts better
-      // @ts-expect-error
-      preserve_interword_spaces: "1",
     });
     const { data } = await worker.recognize(imageBuffer);
     return { text: data.text ?? "", confidence: data.confidence };

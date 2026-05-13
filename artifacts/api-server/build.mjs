@@ -48,6 +48,12 @@ async function buildAll() {
       "isolated-vm",
       "lightningcss",
       "pg-native",
+      "pg",
+      "pg-pool",
+      "pg-protocol",
+      "pg-types",
+      "pg-cloudflare",
+      "pg-connection-string",
       "oracledb",
       "mongodb-client-encryption",
       "nodemailer",
@@ -125,3 +131,4 @@ buildAll().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
