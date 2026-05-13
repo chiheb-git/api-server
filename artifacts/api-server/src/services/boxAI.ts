@@ -1,22 +1,22 @@
-/**
- * BOX AUTHENTICITY ANALYZER v5.0 — HYBRID ENGINE
+ï»¿/**
+ * BOX AUTHENTICITY ANALYZER v5.0 ï¿½ HYBRID ENGINE
  *
  * Architecture: TensorFlow (local, toujours actif) + HF API (cloud, optionnel)
- * Précision cible: 95%
+ * Prï¿½cision cible: 95%
  *
  * Layers:
- *   L1  — COCO-SSD 3D detection         (TF local)
- *   L2  — Natural lighting               (Sharp heuristic)
- *   L3  — MobileNet material             (TF local)
- *   L4  — Edge / sharpness               (Sharp heuristic)
- *   L5  — Print quality                  (Sharp heuristic)
- *   L6  — Natural noise                  (Sharp heuristic)
- *   L7  — Scene coherence                (TF + histogram)
- *   L8  — Screen fraud detection         (TF local)
- *   L9  — BLIP captioning                (HF cloud, optionnel)
- *   L10 — CLIP zero-shot                 (HF cloud, optionnel)
+ *   L1  ï¿½ COCO-SSD 3D detection         (TF local)
+ *   L2  ï¿½ Natural lighting               (Sharp heuristic)
+ *   L3  ï¿½ MobileNet material             (TF local)
+ *   L4  ï¿½ Edge / sharpness               (Sharp heuristic)
+ *   L5  ï¿½ Print quality                  (Sharp heuristic)
+ *   L6  ï¿½ Natural noise                  (Sharp heuristic)
+ *   L7  ï¿½ Scene coherence                (TF + histogram)
+ *   L8  ï¿½ Screen fraud detection         (TF local)
+ *   L9  ï¿½ BLIP captioning                (HF cloud, optionnel)
+ *   L10 ï¿½ CLIP zero-shot                 (HF cloud, optionnel)
  *
- * Setup HF (optionnel mais recommandé):
+ * Setup HF (optionnel mais recommandï¿½):
  *   HF_API_TOKEN=hf_xxxxx dans .env
  */
 
@@ -88,7 +88,7 @@ async function loadModels(): Promise<boolean> {
 const HF_TOKEN = process.env.HF_API_TOKEN ?? "";
 const HF_BASE = "https://api-inference.huggingface.co/models";
 
-// Modèles HF validés et fonctionnels (vérifiés mai 2026)
+// Modï¿½les HF validï¿½s et fonctionnels (vï¿½rifiï¿½s mai 2026)
 const HF_MODELS = {
   captioning: "Salesforce/blip-image-captioning-base",
   clip: "openai/clip-vit-base-patch32",
@@ -175,7 +175,7 @@ async function callHF<T>(model: string, buf: Buffer, jsonBody?: object): Promise
       signal: AbortSignal.timeout(25_000),
     });
     if (res.status === 503) {
-      // Model is in cold start — wait 15s and retry
+      // Model is in cold start ï¿½ wait 15s and retry
       await new Promise((r) => setTimeout(r, 15_000));
       const r2 = await fetch(`${HF_BASE}/${model}`, { method: "POST", headers, body });
       if (!r2.ok) return null;
@@ -193,7 +193,7 @@ async function callHF<T>(model: string, buf: Buffer, jsonBody?: object): Promise
 // LAYERS TF (toujours actifs)
 // ???????????????????????????????????????????????????????????????????????????????
 
-// L1 — COCO-SSD 3D Object Detection
+// L1 ï¿½ COCO-SSD 3D Object Detection
 async function layer1_3dDetection(front: string, angle: string) {
   const tfOk = await loadModels();
   if (!tfOk) return defaultLayer(1);
@@ -235,14 +235,14 @@ async function layer1_3dDetection(front: string, angle: string) {
     status: hasNonBox ? "FAIL" as LayerStatus : statusFromScore(score),
     confidence: 0.8,
     detail: hasNonBox
-      ? `?? Objet non-boîte détecté: ${[...o1, ...o2].join(", ")}`
+      ? `?? Objet non-boï¿½te dï¿½tectï¿½: ${[...o1, ...o2].join(", ")}`
       : is3D
-      ? `? Objet 3D confirmé — ${common.length} objets sous 2 angles, décalage ${Math.round(shift)}px`
-      : `?? Pas de décalage de perspective détecté`,
+      ? `? Objet 3D confirmï¿½ ï¿½ ${common.length} objets sous 2 angles, dï¿½calage ${Math.round(shift)}px`
+      : `?? Pas de dï¿½calage de perspective dï¿½tectï¿½`,
   };
 }
 
-// L2 — Natural Lighting
+// L2 ï¿½ Natural Lighting
 async function layer2_lighting(front: string) {
   const stats = await sharp(bufferFromBase64(front)).stats();
   const ch = stats.channels[0]!;
@@ -258,12 +258,12 @@ async function layer2_lighting(front: string) {
     hasShadows, hasHighlights,
     status: statusFromScore(score), confidence: 0.75,
     detail: score >= 72
-      ? `? Eclairage naturel (${passCount}/4 critères)`
-      : `?? Eclairage suspect (${passCount}/4 critères)`,
+      ? `? Eclairage naturel (${passCount}/4 critï¿½res)`
+      : `?? Eclairage suspect (${passCount}/4 critï¿½res)`,
   };
 }
 
-// L3 — MobileNet Material Classification
+// L3 ï¿½ MobileNet Material Classification
 async function layer3_material(front: string) {
   const tfOk = await loadModels();
   if (!tfOk) return defaultLayer(3);
@@ -300,14 +300,14 @@ async function layer3_material(front: string) {
     lowSaturationLikely: rgbSpread < 45,
     status: statusFromScore(score), confidence: 0.75,
     detail: tooVivid
-      ? `?? Couleurs trop vives (spread=${Math.round(rgbSpread)}) — pas du carton`
+      ? `?? Couleurs trop vives (spread=${Math.round(rgbSpread)}) ï¿½ pas du carton`
       : score >= 72
-      ? `? Matériau boîte confirmé: "${top.className}" (${Math.round(top.probability * 100)}%)`
-      : `?? Matériau non reconnu comme boîte: "${top.className}"`,
+      ? `? Matï¿½riau boï¿½te confirmï¿½: "${top.className}" (${Math.round(top.probability * 100)}%)`
+      : `?? Matï¿½riau non reconnu comme boï¿½te: "${top.className}"`,
   };
 }
 
-// L4 — Edge Detection
+// L4 ï¿½ Edge Detection
 async function layer4_edges(front: string) {
   const LAPLACIAN = { width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] };
   const buf = await sharp(bufferFromBase64(front)).greyscale().convolve(LAPLACIAN).raw().toBuffer();
@@ -324,12 +324,12 @@ async function layer4_edges(front: string) {
     score, edgeIntensity: Math.round(intensity * 10) / 10, strongEdges,
     status: statusFromScore(score), confidence: 0.8,
     detail: strongEdges
-      ? `? Bords nets détectés (intensité=${Math.round(intensity)})`
-      : `?? Bords insuffisants (intensité=${Math.round(intensity)})`,
+      ? `? Bords nets dï¿½tectï¿½s (intensitï¿½=${Math.round(intensity)})`
+      : `?? Bords insuffisants (intensitï¿½=${Math.round(intensity)})`,
   };
 }
 
-// L5 — Print Quality
+// L5 ï¿½ Print Quality
 async function layer5_print(front: string) {
   const stats = await sharp(bufferFromBase64(front)).stats();
   const stdev = stats.channels[0]!.stdev;
@@ -341,12 +341,12 @@ async function layer5_print(front: string) {
     highPrintQuality: stdev > 30,
     status: statusFromScore(score), confidence: 0.7,
     detail: stdev > 30
-      ? `? Bonne qualité d'impression (?=${Math.round(stdev)})`
-      : `?? Qualité d'impression faible (?=${Math.round(stdev)})`,
+      ? `? Bonne qualitï¿½ d'impression (?=${Math.round(stdev)})`
+      : `?? Qualitï¿½ d'impression faible (?=${Math.round(stdev)})`,
   };
 }
 
-// L6 — Natural Noise
+// L6 ï¿½ Natural Noise
 async function layer6_noise(front: string) {
   const orig = await sharp(bufferFromBase64(front)).greyscale().raw().toBuffer();
   const blurred = await sharp(bufferFromBase64(front)).greyscale().blur(3).raw().toBuffer();
@@ -367,14 +367,14 @@ async function layer6_noise(front: string) {
     isReal: isNatural, isTooPerfect,
     status: isTooPerfect ? "FAIL" as LayerStatus : statusFromScore(score), confidence: 0.85,
     detail: isTooPerfect
-      ? `?? Image trop parfaite (bruit=${Math.round(noiseLevel * 100) / 100}) — capture d'écran détectée`
+      ? `?? Image trop parfaite (bruit=${Math.round(noiseLevel * 100) / 100}) ï¿½ capture d'ï¿½cran dï¿½tectï¿½e`
       : isNatural
-      ? `? Bruit naturel confirmé (niveau=${Math.round(noiseLevel * 100) / 100})`
+      ? `? Bruit naturel confirmï¿½ (niveau=${Math.round(noiseLevel * 100) / 100})`
       : `?? Signature bruit inhabituelle (niveau=${Math.round(noiseLevel * 100) / 100})`,
   };
 }
 
-// L7 — Scene Coherence
+// L7 ï¿½ Scene Coherence
 async function layer7_sceneCoherence(front: string, angle: string) {
   const [h1, h2] = await Promise.all([greyHistogram(front, 32), greyHistogram(angle, 32)]);
   let bhatt = 0;
@@ -395,12 +395,12 @@ async function layer7_sceneCoherence(front: string, angle: string) {
     detail: !perspectiveShift
       ? `?? Photos identiques soumises deux fois`
       : !similarScenes
-      ? `?? Scènes différentes entre les 2 photos (similarité=${Math.round(bhatt * 100)}%)`
-      : `? Même objet sous 2 angles (similarité=${Math.round(bhatt * 100)}%, ?brillance=${Math.round(brightDiff)})`,
+      ? `?? Scï¿½nes diffï¿½rentes entre les 2 photos (similaritï¿½=${Math.round(bhatt * 100)}%)`
+      : `? Mï¿½me objet sous 2 angles (similaritï¿½=${Math.round(bhatt * 100)}%, ?brillance=${Math.round(brightDiff)})`,
   };
 }
 
-// L8 — Screen Fraud Detection (TF)
+// L8 ï¿½ Screen Fraud Detection (TF)
 async function layer8_screenFraud(front: string) {
   const tfOk = await loadModels();
   const screenKw = ["screen", "monitor", "display", "television", "tv", "computer",
@@ -408,7 +408,7 @@ async function layer8_screenFraud(front: string) {
   const printKw = ["paper", "document", "letter", "sheet", "newspaper", "magazine", "poster"];
 
   if (!tfOk) {
-    // Fallback heuristique si TF échoue
+    // Fallback heuristique si TF ï¿½choue
     const stats = await sharp(bufferFromBase64(front)).stats();
     const r = stats.channels[0]!.mean;
     const g = stats.channels[1]?.mean ?? r;
@@ -419,7 +419,7 @@ async function layer8_screenFraud(front: string) {
     return {
       score: isFraud ? 10 : 80, screenProbability: isFraud ? 80 : 5, isFraud,
       status: isFraud ? "FAIL" as LayerStatus : "PASS" as LayerStatus, confidence: 0.5,
-      detail: isFraud ? `?? Couleurs écran détectées` : `? Pas de fraude écran détectée`,
+      detail: isFraud ? `?? Couleurs ï¿½cran dï¿½tectï¿½es` : `? Pas de fraude ï¿½cran dï¿½tectï¿½e`,
     };
   }
 
@@ -446,16 +446,16 @@ async function layer8_screenFraud(front: string) {
     score, screenProbability: Math.round(screenProb * 100), isFraud,
     status: isFraud ? "FAIL" as LayerStatus : "PASS" as LayerStatus, confidence: 0.85,
     detail: isFraud
-      ? `?? FRAUDE DETECTEE — ${screenProb > 0.15 ? `Ecran (${Math.round(screenProb * 100)}%)` : screenColor ? "Couleur écran" : `Document imprimé (${Math.round(printProb * 100)}%)`}`
-      : `? Objet physique réel confirmé`,
+      ? `?? FRAUDE DETECTEE ï¿½ ${screenProb > 0.15 ? `Ecran (${Math.round(screenProb * 100)}%)` : screenColor ? "Couleur ï¿½cran" : `Document imprimï¿½ (${Math.round(printProb * 100)}%)`}`
+      : `? Objet physique rï¿½el confirmï¿½`,
   };
 }
 
 // ???????????????????????????????????????????????????????????????????????????????
-// LAYERS HF (optionnels, haute précision)
+// LAYERS HF (optionnels, haute prï¿½cision)
 // ???????????????????????????????????????????????????????????????????????????????
 
-// L9 — BLIP Captioning
+// L9 ï¿½ BLIP Captioning
 async function layer9_blip(front: string) {
   const buf = bufferFromBase64(front);
   type BLIPRes = [{ generated_text: string }];
@@ -464,7 +464,7 @@ async function layer9_blip(front: string) {
   if (!result || !Array.isArray(result) || !result[0]?.generated_text) {
     return {
       score: 50, status: "SKIP" as LayerStatus, confidence: 0,
-      detail: "BLIP non disponible — layer ignoré",
+      detail: "BLIP non disponible ï¿½ layer ignorï¿½",
       caption: "", isBoxScene: false, isFraudScene: false,
     };
   }
@@ -479,9 +479,9 @@ async function layer9_blip(front: string) {
     status: isFraudScene ? "FAIL" as LayerStatus : statusFromScore(score),
     confidence: 0.90,
     detail: isFraudScene
-      ? `?? BLIP décrit une fraude: "${result[0].generated_text}"`
+      ? `?? BLIP dï¿½crit une fraude: "${result[0].generated_text}"`
       : isBoxScene
-      ? `? BLIP confirme une boîte: "${result[0].generated_text}"`
+      ? `? BLIP confirme une boï¿½te: "${result[0].generated_text}"`
       : `?? BLIP ambigu: "${result[0].generated_text}"`,
     caption: result[0].generated_text,
     isBoxScene,
@@ -489,7 +489,7 @@ async function layer9_blip(front: string) {
   };
 }
 
-// L10 — CLIP Zero-Shot
+// L10 ï¿½ CLIP Zero-Shot
 async function layer10_clip(front: string) {
   const buf = bufferFromBase64(front);
   type CLIPRes = Array<{ label: string; score: number }>;
@@ -502,7 +502,7 @@ async function layer10_clip(front: string) {
   if (!result || !Array.isArray(result)) {
     return {
       score: 50, status: "SKIP" as LayerStatus, confidence: 0,
-      detail: "CLIP non disponible — layer ignoré",
+      detail: "CLIP non disponible ï¿½ layer ignorï¿½",
       topClass: "", clipScores: {},
     };
   }
@@ -538,7 +538,7 @@ async function layer10_clip(front: string) {
 // ??? Default layers ???????????????????????????????????????????????????????????
 
 function defaultLayer(kind: number): any {
-  const base = { score: 0, status: "FAIL" as LayerStatus, confidence: 0, detail: `Layer ${kind} — échec` };
+  const base = { score: 0, status: "FAIL" as LayerStatus, confidence: 0, detail: `Layer ${kind} ï¿½ ï¿½chec` };
   const extras: Record<number, object> = {
     1: { is3D: false, objectsDetected: [], positionShift: 0 },
     2: { brightness: 0, contrast: 0, hasShadows: false, hasHighlights: false },
@@ -564,7 +564,7 @@ export async function analyzeBoxAuthenticity(
 ): Promise<BoxAuthResult> {
   const startTime = Date.now();
 
-  // Lancer tous les layers en parallèle
+  // Lancer tous les layers en parallï¿½le
   const settled = await Promise.allSettled([
     layer1_3dDetection(frontBase64, angleBase64),   // L1
     layer2_lighting(frontBase64),                    // L2
@@ -593,7 +593,7 @@ export async function analyzeBoxAuthenticity(
   const tfUsed = l1.status !== "FAIL" || l3.status !== "FAIL";
 
   // ?? Weights dynamiques ????????????????????????????????????????????????????
-  // Si HF disponible ? HF prend plus de poids (plus précis)
+  // Si HF disponible ? HF prend plus de poids (plus prï¿½cis)
   // Si HF absent ? TF prend plus de poids
   let W = hfUsed
     ? { l1:0.10, l2:0.05, l3:0.10, l4:0.05, l5:0.04, l6:0.08, l7:0.08, l8:0.10, l9:0.20, l10:0.20 }
@@ -608,29 +608,29 @@ export async function analyzeBoxAuthenticity(
   // ?? Vetos critiques ???????????????????????????????????????????????????????
   let finalScore = rawScore;
 
-  // Veto 1: COCO détecte un non-box ? FAKE
+  // Veto 1: COCO dï¿½tecte un non-box ? FAKE
   if (l1.score <= 5) finalScore = Math.min(finalScore, 20);
-  // Veto 2: Fraude écran TF ? FAKE
+  // Veto 2: Fraude ï¿½cran TF ? FAKE
   if (l8.isFraud) finalScore = Math.min(finalScore, 30);
-  // Veto 3: BLIP décrit une fraude ? FAKE
+  // Veto 3: BLIP dï¿½crit une fraude ? FAKE
   if (l9.isFraudScene) finalScore = Math.min(finalScore, 20);
-  // Veto 4: CLIP identifie écran/screenshot ? FAKE
+  // Veto 4: CLIP identifie ï¿½cran/screenshot ? FAKE
   if (l10.topClass && ["screen", "screenshot", "printout", "digital"].some((k) => l10.topClass.includes(k)))
     finalScore = Math.min(finalScore, 25);
   // Veto 5: Image trop parfaite ? FAKE
   if (l6.isTooPerfect) finalScore = Math.min(finalScore, 25);
   // Veto 6: Photos identiques soumises 2 fois ? SUSPICIOUS
   if (l7.histogramSimilarity > 0.99) finalScore = Math.min(finalScore, 45);
-  // Veto 7: Photos de scènes complètement différentes ? SUSPICIOUS
+  // Veto 7: Photos de scï¿½nes complï¿½tement diffï¿½rentes ? SUSPICIOUS
   if (!l7.similarScenes && l7.histogramSimilarity > 0) finalScore = Math.min(finalScore, 55);
 
   // ?? Risk flags ????????????????????????????????????????????????????????????
   const riskFlags: string[] = [];
-  if (l1.score <= 5) riskFlags.push(`Objet non-boîte détecté: ${l1.objectsDetected.join(", ")}`);
-  if (l8.isFraud) riskFlags.push(`Fraude écran/impression détectée (${l8.screenProbability}%)`);
-  if (l9.isFraudScene) riskFlags.push(`BLIP: scène frauduleuse "${l9.caption}"`);
-  if (l6.isTooPerfect) riskFlags.push("Image trop parfaite — capture d'écran probable");
-  if (!l7.similarScenes) riskFlags.push("Photos de scènes différentes");
+  if (l1.score <= 5) riskFlags.push(`Objet non-boï¿½te dï¿½tectï¿½: ${l1.objectsDetected.join(", ")}`);
+  if (l8.isFraud) riskFlags.push(`Fraude ï¿½cran/impression dï¿½tectï¿½e (${l8.screenProbability}%)`);
+  if (l9.isFraudScene) riskFlags.push(`BLIP: scï¿½ne frauduleuse "${l9.caption}"`);
+  if (l6.isTooPerfect) riskFlags.push("Image trop parfaite ï¿½ capture d'ï¿½cran probable");
+  if (!l7.similarScenes) riskFlags.push("Photos de scï¿½nes diffï¿½rentes");
   if (l7.histogramSimilarity > 0.99) riskFlags.push("Photos identiques soumises deux fois");
 
   // ?? Confiance globale ?????????????????????????????????????????????????????
@@ -645,10 +645,10 @@ export async function analyzeBoxAuthenticity(
 
   const verdictMessage =
     finalScore >= 72
-      ? `? Boîte AUTHENTIQUE — Objet physique réel confirmé (confiance: ${confidence})`
+      ? `? Boï¿½te AUTHENTIQUE ï¿½ Objet physique rï¿½el confirmï¿½ (confiance: ${confidence})`
       : finalScore >= 45
-      ? `?? Boîte SUSPECTE — ${riskFlags.length} anomalie(s), vérification manuelle conseillée`
-      : `? Boîte FAUSSE — ${riskFlags[0] ?? "Pas une vraie boîte physique"}`;
+      ? `?? Boï¿½te SUSPECTE ï¿½ ${riskFlags.length} anomalie(s), vï¿½rification manuelle conseillï¿½e`
+      : `? Boï¿½te FAUSSE ï¿½ ${riskFlags[0] ?? "Pas une vraie boï¿½te physique"}`;
 
   return {
     finalScore, verdict, verdictMessage, confidence, riskFlags,
@@ -666,8 +666,8 @@ export function neutralBoxAuthResult(): BoxAuthResult {
   const n = (k: number) => defaultLayer(k);
   return {
     finalScore: 0, verdict: "FAKE",
-    verdictMessage: "? Analyse échouée — veuillez réessayer",
-    confidence: "LOW", riskFlags: ["Analyse non complétée"],
+    verdictMessage: "? Analyse ï¿½chouï¿½e ï¿½ veuillez rï¿½essayer",
+    confidence: "LOW", riskFlags: ["Analyse non complï¿½tï¿½e"],
     layers: { layer1:n(1), layer2:n(2), layer3:n(3), layer4:n(4), layer5:n(5),
               layer6:n(6), layer7:n(7), layer8:n(8), layer9:n(9), layer10:n(10) },
     hfApiUsed: false, tfApiUsed: false, processingTimeMs: 0,
