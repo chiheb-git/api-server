@@ -36,7 +36,7 @@ const C = {
   white:    "#FFFFFF",
 };
 
-const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `http://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
+const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `https://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
 
 // ─── Logo 3D animé ─────────────────────────────────────────────────────────────
 function CyberLogo3D() {
