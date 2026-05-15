@@ -244,7 +244,7 @@ interface SearchResult {
   message: string; searchCount: number; phone?: StoredPhone;
 }
 
-const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `http://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
+const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `https://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function SearchPhoneScreen() {

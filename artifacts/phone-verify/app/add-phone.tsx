@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -26,7 +26,7 @@ import { StyledInput } from "@/components/StyledInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import Svg, { Path, Circle, Rect, G, Line } from "react-native-svg";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ??? Types ???????????????????????????????????????????????????????????????????
 
 interface StoredOkResponse {
   stored: true;
@@ -47,12 +47,12 @@ interface StoredOkResponse {
     score_box_ai: number;
     score_global: number;
     verdict: "Authentique" | "Suspect" | "Invalide";
-    niveau_confiance: "Élevé" | "Moyen" | "Faible";
+    niveau_confiance: "Elev�" | "Moyen" | "Faible";
     coherence: "oui" | "non";
     forces: string[];
     faiblesses: string[];
     recommandations: string[];
-    risque_global: "Faible" | "Moyen" | "Élevé";
+    risque_global: "Faible" | "Moyen" | "Elev�";
     decision: "STOCKER" | "REJETER";
     raison: string;
   };
@@ -68,7 +68,7 @@ interface FailedFusionResponse {
 
 type AnalyzeResultResponse = StoredOkResponse | FailedFusionResponse;
 
-// ─── Fallback fusion ──────────────────────────────────────────────────────────
+// ??? Fallback fusion ??????????????????????????????????????????????????????????
 
 function fallbackFusionAnalysisFromParts(
   imeiAnalysis: StoredOkResponse["imeiAnalysis"],
@@ -93,11 +93,11 @@ function fallbackFusionAnalysisFromParts(
   const niveau_confiance: NonNullable<
     StoredOkResponse["fusionAnalysis"]
   >["niveau_confiance"] =
-    score_global >= 70 ? "Élevé" : score_global >= 50 ? "Moyen" : "Faible";
+    score_global >= 70 ? "Elev�" : score_global >= 50 ? "Moyen" : "Faible";
   const risque_global: NonNullable<
     StoredOkResponse["fusionAnalysis"]
   >["risque_global"] =
-    score_global >= 70 ? "Faible" : score_global >= 50 ? "Moyen" : "Élevé";
+    score_global >= 70 ? "Faible" : score_global >= 50 ? "Moyen" : "Elev�";
   return {
     score_imei_ai: imeiAi,
     score_box_ai: boxAi,
@@ -105,7 +105,7 @@ function fallbackFusionAnalysisFromParts(
     verdict,
     niveau_confiance,
     coherence: Math.abs(imeiAi - boxAi) <= 25 ? "oui" : "non",
-    forces: ["Synthèse calculée côté app à partir des scores IMEI et boîte"],
+    forces: ["Synth�se calcul�e c�t� app � partir des scores IMEI et bo�te"],
     faiblesses:
       score_global < 50
         ? ["Score global sous le seuil de validation"]
@@ -114,9 +114,9 @@ function fallbackFusionAnalysisFromParts(
           : [],
     recommandations:
       score_global >= 50
-        ? ["Vérifier les détails affichés sur l'écran précédent si besoin"]
+        ? ["V�rifier les d�tails affich�s sur l'�cran pr�c�dent si besoin"]
         : [
-            "Reprendre la procédure depuis cette page avec de meilleures photos",
+            "Reprendre la proc�dure depuis cette page avec de meilleures photos",
           ],
     risque_global,
     decision: score_global >= 50 ? "STOCKER" : "REJETER",
@@ -125,10 +125,10 @@ function fallbackFusionAnalysisFromParts(
 }
 
 const API_BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"]
-  ? `http://${process.env["EXPO_PUBLIC_DOMAIN"]}`
-  : "http://localhost:3000";
+  ? `https://${process.env["EXPO_PUBLIC_DOMAIN"]}`
+  : "https://localhost:3000";
 
-// ─── Cyber color palette ──────────────────────────────────────────────────────
+// ??? Cyber color palette ??????????????????????????????????????????????????????
 
 const CYBER = {
   bg: "#040810",
@@ -145,7 +145,7 @@ const CYBER = {
   glow: "rgba(0,212,255,0.15)",
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ??? Sub-components ???????????????????????????????????????????????????????????
 
 /** Animated shield logo */
 const ShieldLogo = () => {
@@ -389,7 +389,7 @@ const CyberInput = ({
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         maxLength={maxLength}
-        // Pass focus/blur for glow — actual implementation depends on StyledInput internals
+        // Pass focus/blur for glow � actual implementation depends on StyledInput internals
       />
     </View>
   );
@@ -426,7 +426,7 @@ const ScoreBar = ({
   );
 };
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ??? Main Screen ??????????????????????????????????????????????????????????????
 
 export default function AddPhoneScreen() {
   const insets = useSafeAreaInsets();
@@ -829,9 +829,9 @@ export default function AddPhoneScreen() {
   }, [analysisResult, fusionData, boxBar, imeiBar]);
 
   const processingSteps = [
-    "⚡ Analyzing IMEI sticker...",
-    "⚡ Analyzing box photos...",
-    "⚡ Running Fusion AI...",
+    "? Analyzing IMEI sticker...",
+    "? Analyzing box photos...",
+    "? Running Fusion AI...",
   ];
 
   const submitScale = submitPulse.interpolate({
@@ -839,7 +839,7 @@ export default function AddPhoneScreen() {
     outputRange: [1, 1.015],
   });
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ??? Render ???????????????????????????????????????????????????????????????
 
   return (
     <View style={[s.root, { backgroundColor: CYBER.bg }]}>
@@ -857,7 +857,7 @@ export default function AddPhoneScreen() {
         </View>
       ) : null}
 
-      {/* ── Camera Modal ── */}
+      {/* ?? Camera Modal ?? */}
       {Platform.OS !== "web" && (
         <Modal visible={cameraVisible} animationType="slide" transparent={false}>
           <View style={s.modalContainer}>
@@ -903,7 +903,7 @@ export default function AddPhoneScreen() {
         </Modal>
       )}
 
-      {/* ── Header ── */}
+      {/* ?? Header ?? */}
       <View
         style={[
           s.header,
@@ -940,19 +940,19 @@ export default function AddPhoneScreen() {
         </View>
       </View>
 
-      {/* ── Scroll Content ── */}
+      {/* ?? Scroll Content ?? */}
       <ScrollView
         ref={(r) => { scrollRef.current = r; }}
         contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Device Info ── */}
+        {/* ?? Device Info ?? */}
         <SectionHeader label="Device Identification" />
 
         {/* IMEI field with pips */}
         <View style={s.inputGroup}>
           <Text style={s.inputLabel}>
-            <Text style={{ color: CYBER.accent }}>■ </Text>IMEI CODE
+            <Text style={{ color: CYBER.accent }}>? </Text>IMEI CODE
           </Text>
           <View
             style={[
@@ -961,7 +961,7 @@ export default function AddPhoneScreen() {
             ]}
           >
             <Text style={s.imeiDigits}>
-              {imei || "···············"}
+              {imei || "���������������"}
             </Text>
           </View>
           <View style={s.pipRow}>
@@ -1003,7 +1003,7 @@ export default function AddPhoneScreen() {
           </View>
         </View>
 
-        {/* ── IMEI Sticker ── */}
+        {/* ?? IMEI Sticker ?? */}
         <SectionHeader label="IMEI Sticker Scan" />
 
         <View style={s.actionRow}>
@@ -1028,7 +1028,7 @@ export default function AddPhoneScreen() {
             uri={imageUri}
             label="IMEI"
             sublabel="REQUIRED"
-            icon="📷"
+            icon="??"
           />
         </View>
 
@@ -1049,7 +1049,7 @@ export default function AddPhoneScreen() {
                 IMEI DETECTED FROM PHOTO
               </Text>
               <Text style={[s.scanSub, { color: CYBER.green, opacity: 0.7 }]}>
-                {detectedImei} · OCR confidence {scanConfidence}%
+                {detectedImei} � OCR confidence {scanConfidence}%
               </Text>
             </View>
           </View>
@@ -1058,12 +1058,12 @@ export default function AddPhoneScreen() {
           <View style={[s.scanBadge, s.scanBadgeFail]}>
             <Feather name="alert-triangle" size={14} color={CYBER.amber} />
             <Text style={[s.scanTitle, { color: CYBER.amber, flex: 1 }]}>
-              IMEI NOT DETECTED — take a clearer photo or type IMEI manually
+              IMEI NOT DETECTED � take a clearer photo or type IMEI manually
             </Text>
           </View>
         )}
 
-        {/* ── Error Banner ── */}
+        {/* ?? Error Banner ?? */}
         {error ? (
           <View style={s.errorBanner}>
             <Feather name="alert-circle" size={14} color={CYBER.red} />
@@ -1071,7 +1071,7 @@ export default function AddPhoneScreen() {
           </View>
         ) : null}
 
-        {/* ── Box Verify Shortcut ── */}
+        {/* ?? Box Verify Shortcut ?? */}
         <TouchableOpacity
           style={s.boxVerifyBtn}
           onPress={() => router.push("/box-verify")}
@@ -1087,7 +1087,7 @@ export default function AddPhoneScreen() {
           <Feather name="arrow-right" size={16} color="#60a5fa" />
         </TouchableOpacity>
 
-        {/* ── Box Photos ── */}
+        {/* ?? Box Photos ?? */}
         <SectionHeader label="Box Documentation" />
 
         <View style={s.actionRow}>
@@ -1112,17 +1112,17 @@ export default function AddPhoneScreen() {
             uri={boxFrontUri}
             label="FRONT"
             sublabel="PENDING"
-            icon="📦"
+            icon="??"
           />
           <PhotoCard
             uri={boxAngleUri}
             label="ANGLE"
             sublabel="PENDING"
-            icon="📦"
+            icon="??"
           />
         </View>
 
-        {/* ── Submit ── */}
+        {/* ?? Submit ?? */}
         <Animated.View
           style={{
             transform: canSubmit ? [{ scale: submitScale }] : [],
@@ -1170,7 +1170,7 @@ export default function AddPhoneScreen() {
           </View>
         )}
 
-        {/* ── Analysis Result ── */}
+        {/* ?? Analysis Result ?? */}
         {analysisResult && fusionData ? (
           <View style={s.analysisContainer}>
             {/* Decision banner */}
@@ -1205,8 +1205,8 @@ export default function AddPhoneScreen() {
                   ]}
                 >
                   {fusionData.decision === "STOCKER"
-                    ? "IMEI STORED — AUTHENTIC"
-                    : "IMEI REJECTED — SUSPICIOUS"}
+                    ? "IMEI STORED � AUTHENTIC"
+                    : "IMEI REJECTED � SUSPICIOUS"}
                 </Text>
                 <Text style={[s.decisionSub, { color: CYBER.muted }]}>
                   {fusionData.raison}
@@ -1259,7 +1259,7 @@ export default function AddPhoneScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ??? Styles ???????????????????????????????????????????????????????????????????
 
 const s = StyleSheet.create({
   root: { flex: 1 },

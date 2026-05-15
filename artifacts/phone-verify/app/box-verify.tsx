@@ -35,7 +35,7 @@ interface BoxVerifyResponse {
   verdictMessage: string;
 }
 
-const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `http://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
+const BASE_URL = process.env["EXPO_PUBLIC_DOMAIN"] ? `https://${process.env["EXPO_PUBLIC_DOMAIN"]}` : "";
 
 export default function BoxVerifyScreen() {
   const colors = useColors();
