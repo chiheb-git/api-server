@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "e6462390-cd61-4694-b1be-7738d18f662b"
+      }
+    },
+    "android": {
+      "package": "com.chiheb.phoneverify"
+    }
+  }
+}

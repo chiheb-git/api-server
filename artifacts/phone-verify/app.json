@@ -16,7 +16,12 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.app_suc.phoneverify"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -34,6 +39,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f2f0aa4c-0d32-4ccf-96f5-591f6ba49d47"
+      }
     }
   }
 }
